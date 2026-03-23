@@ -309,4 +309,423 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
                   {recipe.steps.map((step,i) => (
                     <div key={i} style={{ display:"flex", gap:12, marginBottom:13, alignItems:"flex-start" }}>
                       <div style={{
-                        background:"linear​​​​​​​​​​​​​​​​
+                        background:"linear-gradient(135deg,#e8825a,#c8603a)", color:"#fff",
+                        borderRadius:"50%", minWidth:26, height:26,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:12, fontWeight:700, marginTop:2,
+                      }}>{i+1}</div>
+                      <div style={{ fontSize:13, color:"#c8c0d8", lineHeight:1.75 }}>{step}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {tab==="comments" && (
+            <div>
+              {(recipe.comments||[]).length === 0 ? (
+                <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
+                  <div style={{ fontSize:38, marginBottom:10 }}>📷</div>
+                  <div style={{ fontSize:13, lineHeight:1.9 }}>まだ記録がありません</div>
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:20 }}>
+                  {(recipe.comments||[]).map(c => (
+                    <div key={c.id} style={{
+                      background:"#1a1a2a", borderRadius:14, padding:"12px 14px", border:"1px solid #25253a",
+                    }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:9 }}>
+                        <div style={{
+                          width:28, height:28, borderRadius:"50%", flexShrink:0,
+                          background:"linear-gradient(135deg,#e8825a,#8a5ac8)",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:12, fontWeight:700, color:"#fff",
+                        }}>{(c.author||"?")[0].toUpperCase()}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#d0c8e0" }}>{c.author}</div>
+                          <div style={{ fontSize:10, color:"#3a3a50" }}>{c.createdAt}</div>
+                        </div>
+                        {c.author === userName && (
+                          <button onClick={() => deleteComment(c.id)} style={{
+                            background:"none", border:"none", color:"#444", cursor:"pointer", fontSize:13,
+                          }}>✕</button>
+                        )}
+                      </div>
+                      {c.photo && (
+                        <img src={c.photo} alt="投稿写真" style={{
+                          width:"100%", borderRadius:10, marginBottom: c.text ? 9 : 0,
+                          maxHeight:240, objectFit:"cover",
+                        }}/>
+                      )}
+                      {c.text && <div style={{ fontSize:13, color:"#c0b8d0", lineHeight:1.75 }}>{c.text}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ background:"#1e1e2e", borderRadius:16, padding:"14px", border:"1px solid #25253a" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#e8825a", marginBottom:10 }}>▸ 記録を追加</div>
+                <textarea
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  placeholder="感想・アレンジ・メモなど..."
+                  rows={3}
+                  style={{
+                    width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #2a2a40", background:"#0f0f1a", color:"#d0c8e0",
+                    fontSize:13, outline:"none", resize:"none",
+                    boxSizing:"border-box", lineHeight:1.6, marginBottom:10,
+                  }}
+                />
+                {photoLoading && (
+                  <div style={{ color:"#e8825a", fontSize:12, marginBottom:8, textAlign:"center" }}>
+                    写真を読み込み中...
+                  </div>
+                )}
+                {commentPhoto && !photoLoading && (
+                  <div style={{ position:"relative", marginBottom:10 }}>
+                    <img src={commentPhoto} alt="preview" style={{
+                      width:"100%", borderRadius:10, maxHeight:180, objectFit:"cover",
+                    }}/>
+                    <button onClick={() => setCommentPhoto(null)} style={{
+                      position:"absolute", top:7, right:7, background:"#000b",
+                      border:"none", borderRadius:"50%", width:28, height:28,
+                      cursor:"pointer", color:"#fff", fontSize:14,
+                    }}>✕</button>
+                  </div>
+                )}
+                <input
+                  ref={photoRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display:"none" }}
+                  onChange={e => { const f = e.target.files?.[0]; if(f) handlePhotoSelect(f); e.target.value=""; }}
+                />
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => photoRef.current?.click()} disabled={photoLoading} style={{
+                    padding:"9px 14px", borderRadius:10, border:"1px solid #2a2a40",
+                    background:"#0f0f1a", color: photoLoading ? "#444" : "#777",
+                    fontSize:12, cursor: photoLoading ? "default" : "pointer", whiteSpace:"nowrap",
+                  }}>{photoLoading ? "読込中..." : "📷 写真を追加"}</button>
+                  <button
+                    onClick={submitComment}
+                    disabled={!commentText.trim() && !commentPhoto}
+                    style={{
+                      flex:1, padding:"9px", borderRadius:10, border:"none",
+                      background: (!commentText.trim() && !commentPhoto) ? "#25253a" : "linear-gradient(135deg,#e8825a,#c8603a)",
+                      color:"#fff", fontSize:13, fontWeight:700,
+                      cursor: (!commentText.trim() && !commentPhoto) ? "default" : "pointer",
+                    }}
+                  >投稿する</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddScreen({ onBack, onAdd, userName }) {
+  const [mode, setMode] = useState("image");
+  const [textInput, setTextInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
+  const [toast, setToast] = useState("");
+  const fileRef = useRef();
+
+  const process = async ({ imageFile, text }) => {
+    setLoading(true);
+    setLoadingMsg(imageFile ? "🤖 AIがレシピを解析中..." : "🔍 AIが取得中...");
+    try {
+      const data = await extractRecipe({ imageFile, text });
+      onAdd({
+        ...data, id: Date.now(), addedBy: userName,
+        addedAt: new Date().toLocaleDateString("ja-JP"),
+        comments: [],
+        sourceUrl: data.sourceUrl || (typeof text === "string" && text.startsWith("http") ? text : null),
+      });
+    } catch(e) {
+      setLoading(false);
+      setToast("❌ " + e.message);
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#0f0f14", padding:24 }}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap');"}</style>
+      <div style={{ maxWidth:500, margin:"0 auto" }}>
+        <button onClick={onBack} style={{
+          background:"none", border:"none", color:"#e8825a",
+          fontSize:14, cursor:"pointer", padding:0, marginBottom:24,
+        }}>← 戻る</button>
+        <div style={{
+          fontFamily:"'Zen Kaku Gothic New',sans-serif",
+          fontSize:22, fontWeight:900, color:"#f0eaff", marginBottom:22,
+        }}>レシピを追加</div>
+        <div style={{ display:"flex", background:"#1a1a2e", borderRadius:12, padding:4, marginBottom:22, border:"1px solid #25253a" }}>
+          {[{id:"image",label:"📸 スクショ"},{id:"text",label:"🔗 URL・テキスト"}].map(m => (
+            <button key={m.id} onClick={() => setMode(m.id)} style={{
+              flex:1, padding:"10px", borderRadius:10, border:"none",
+              background: mode===m.id ? "#e8825a" : "transparent",
+              color: mode===m.id ? "#fff" : "#666",
+              fontWeight: mode===m.id ? 700 : 400, cursor:"pointer", fontSize:13,
+            }}>{m.label}</button>
+          ))}
+        </div>
+        {mode === "image" ? (
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              style={{ display:"none" }}
+              onChange={e => { const f = e.target.files?.[0]; if(f) process({imageFile:f}); e.target.value=""; }}
+            />
+            <div
+              onClick={() => !loading && fileRef.current?.click()}
+              style={{
+                border:"2.5px dashed #25253a", borderRadius:20, padding:"48px 24px",
+                textAlign:"center", cursor: loading ? "default" : "pointer", background:"#1a1a2e",
+              }}
+            >
+              {loading ? <Loader msg={loadingMsg}/> : (
+                <div>
+                  <div style={{ fontSize:52, marginBottom:16 }}>📱</div>
+                  <div style={{ color:"#d0c8e0", fontWeight:700, marginBottom:8, fontSize:15 }}>レシピ画像をアップロード</div>
+                  <div style={{ color:"#444", fontSize:13, lineHeight:1.8 }}>SNSのスクショや料理写真をタップして選択</div>
+                  <div style={{
+                    marginTop:20, display:"inline-flex",
+                    background:"linear-gradient(135deg,#e8825a,#c8603a)",
+                    color:"#fff", borderRadius:10, padding:"10px 22px", fontSize:13, fontWeight:700,
+                  }}>📂 ファイルを選択</div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <textarea
+              value={textInput}
+              onChange={e => setTextInput(e.target.value)}
+              placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/...\n例: 材料：卵2個..."}
+              rows={7}
+              style={{
+                width:"100%", padding:"14px 16px", borderRadius:14,
+                border:"2px solid #25253a", background:"#1a1a2e", color:"#d0c8e0",
+                fontSize:14, outline:"none", resize:"vertical", boxSizing:"border-box", lineHeight:1.6,
+              }}
+            />
+            <button
+              onClick={() => process({text:textInput})}
+              disabled={loading || !textInput.trim()}
+              style={{
+                width:"100%", marginTop:12, padding:"14px", borderRadius:14, border:"none",
+                background: loading || !textInput.trim() ? "#25253a" : "linear-gradient(135deg,#e8825a,#c8603a)",
+                color:"#fff", fontSize:15, fontWeight:700,
+                cursor: loading || !textInput.trim() ? "default" : "pointer",
+              }}
+            >{loading ? <Loader msg={loadingMsg}/> : "🤖 AIでレシピを抽出"}</button>
+          </div>
+        )}
+      </div>
+      <Toast msg={toast} onClear={() => setToast("")}/>
+    </div>
+  );
+}
+
+export default function App() {
+  const [userName, setUserName] = useState("");
+  const [nameInput, setNameInput] = useState("");
+  const [recipes, setRecipes] = useState([]);
+  const [view, setView] = useState("home");
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setRecipes(JSON.parse(saved));
+      const savedName = localStorage.getItem("rs-name");
+      if (savedName) setUserName(savedName);
+    } catch {}
+  }, []);
+
+  const persist = (updated) => {
+    setRecipes(updated);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch {}
+  };
+
+  const handleAdd = (recipe) => {
+    persist([recipe, ...recipes]);
+    setToast("✅ レシピを追加しました！");
+    setView("home");
+  };
+
+  const handleDelete = (id) => {
+    persist(recipes.filter(r => r.id !== id));
+    setToast("🗑 削除しました");
+  };
+
+  const handleUpdate = (updated) => {
+    persist(recipes.map(r => r.id === updated.id ? updated : r));
+    setSelected(updated);
+  };
+
+  const allTags = [...new Set(recipes.flatMap(r => r.tags||[]))];
+  const filtered = recipes.filter(r => {
+    const ms = !search || r.title?.includes(search) || (r.tags||[]).some(t => t.includes(search));
+    const mt = !activeTag || (r.tags||[]).includes(activeTag);
+    return ms && mt;
+  });
+
+  if (!userName) return (
+    <div style={{
+      minHeight:"100vh", background:"linear-gradient(160deg,#0f0f14,#1a1a2e)",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:24,
+    }}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap');"}</style>
+      <div style={{ maxWidth:360, width:"100%", textAlign:"center" }}>
+        <div style={{ fontSize:62, marginBottom:16 }}>🍳</div>
+        <div style={{
+          fontFamily:"'Zen Kaku Gothic New',sans-serif",
+          fontSize:26, fontWeight:900, color:"#f0eaff", marginBottom:8,
+        }}>レシピノート</div>
+        <div style={{ color:"#555", fontSize:13, marginBottom:30, lineHeight:1.9 }}>
+          SNS・スクショからレシピをまとめて管理できるツール
+        </div>
+        <input
+          value={nameInput}
+          onChange={e => setNameInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && nameInput.trim()) {
+              localStorage.setItem("rs-name", nameInput.trim());
+              setUserName(nameInput.trim());
+            }
+          }}
+          placeholder="あなたの名前を入力"
+          style={{
+            width:"100%", padding:"14px 16px", borderRadius:14,
+            border:"2px solid #25253a", background:"#1a1a2e", color:"#f0eaff",
+            fontSize:15, outline:"none", boxSizing:"border-box", marginBottom:12,
+          }}
+        />
+        <button
+          onClick={() => {
+            if (nameInput.trim()) {
+              localStorage.setItem("rs-name", nameInput.trim());
+              setUserName(nameInput.trim());
+            }
+          }}
+          style={{
+            width:"100%", padding:"14px", borderRadius:14, border:"none",
+            background: nameInput.trim() ? "linear-gradient(135deg,#e8825a,#c8603a)" : "#25253a",
+            color:"#fff", fontSize:15, fontWeight:700,
+            cursor: nameInput.trim() ? "pointer" : "default",
+          }}
+        >はじめる →</button>
+      </div>
+    </div>
+  );
+
+  if (view === "add") return (
+    <AddScreen onBack={() => setView("home")} onAdd={handleAdd} userName={userName}/>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#0f0f14" }}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap');"}</style>
+      <div style={{
+        background:"#13131e", borderBottom:"1px solid #1e1e2e",
+        padding:"16px 20px 18px", position:"sticky", top:0, zIndex:100,
+      }}>
+        <div style={{ maxWidth:740, margin:"0 auto" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+            <div>
+              <div style={{
+                fontFamily:"'Zen Kaku Gothic New',sans-serif",
+                fontSize:19, fontWeight:900, color:"#f0eaff", letterSpacing:1,
+              }}>🍳 レシピノート</div>
+              <div style={{ color:"#404055", fontSize:11, marginTop:1 }}>{userName} • {recipes.length}品</div>
+            </div>
+            <button onClick={() => setView("add")} style={{
+              background:"linear-gradient(135deg,#e8825a,#c8603a)", border:"none",
+              borderRadius:12, padding:"10px 18px", color:"#fff", fontWeight:700,
+              fontSize:14, cursor:"pointer", boxShadow:"0 4px 18px #e8825a33",
+            }}>＋ 追加</button>
+          </div>
+          <div style={{ position:"relative", marginBottom: allTags.length > 0 ? 10 : 0 }}>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:"#3a3a50" }}>🔍</span>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="レシピ名・タグで検索"
+              style={{
+                width:"100%", padding:"10px 14px 10px 34px", borderRadius:10,
+                border:"1px solid #1e1e2e", background:"#1a1a28", color:"#c0c0d8",
+                fontSize:13, outline:"none", boxSizing:"border-box",
+              }}
+            />
+          </div>
+          {allTags.length > 0 && (
+            <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:2 }}>
+              <button onClick={() => setActiveTag("")} style={{
+                background: !activeTag ? "#e8825a" : "#1a1a28",
+                color: !activeTag ? "#fff" : "#555",
+                border:"none", borderRadius:20, padding:"4px 12px", fontSize:11,
+                fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+              }}>すべて</button>
+              {allTags.map((t,i) => {
+                const c = tagColor(t);
+                return (
+                  <button key={i} onClick={() => setActiveTag(activeTag === t ? "" : t)} style={{
+                    background: activeTag===t ? c+"22" : "#1a1a28",
+                    color: activeTag===t ? c : "#555",
+                    border: "1px solid " + (activeTag===t ? c+"55" : "#25253a"),
+                    borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700,
+                    cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+                  }}>{t}</button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ maxWidth:740, margin:"0 auto", padding:"20px 16px 56px" }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"72px 0" }}>
+            <div style={{ fontSize:52, marginBottom:16 }}>📭</div>
+            <div style={{ fontWeight:700, marginBottom:8, color:"#555" }}>
+              {search||activeTag ? "該当するレシピがありません" : "まだレシピがありません"}
+            </div>
+            <div style={{ fontSize:13, lineHeight:1.9, color:"#444" }}>
+              「＋ 追加」からスクショやURLでレシピを取り込もう
+            </div>
+          </div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:14 }}>
+            {filtered.map(r => (
+              <RecipeCard
+                key={r.id}
+                recipe={r}
+                onClick={() => { setSelected(r); setView("detail"); }}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      {view === "detail" && selected && (
+        <RecipeDetail
+          recipe={selected}
+          onClose={() => { setView("home"); setSelected(null); }}
+          onUpdate={handleUpdate}
+          userName={userName}
+        />
+      )}
+      <Toast msg={toast} onClear={() => setToast("")}/>
+    </div>
+  );
+}
