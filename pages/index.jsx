@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from "react";
 const STORAGE_KEY = "recipe-note-local";
 const G = { dark:"#0a0a12", card:"#13132a", input:"#1a1a30", border:"#2a2a45", text:"#f0eaff", sub:"#8888aa", accent:"#e8825a", accent2:"#c85a8a" };
 
+const GLOBAL_CSS = "@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap'); *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; } body { background:" + G.dark + "; color:" + G.text + "; } input, textarea, button, select { -webkit-appearance:none; appearance:none; font-family:inherit; } *:focus { outline:none; box-shadow:none; }";
+
 function scaleAmount(str, scale) {
   if (!str || scale === 1) return str;
   return str.replace(/(\d+\.?\d*)/g, (m) => {
@@ -37,7 +39,7 @@ async function extractRecipe({ imageFile, text }) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, imageBase64, imageMediaType }),
   });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e?.error || "エラー"); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error || "エラー"); }
   const data = await res.json();
   const parsed = parseJSONRobust(data.content);
   if (!parsed) throw new Error("解析失敗。別の画像やURLをお試しください。");
@@ -63,11 +65,6 @@ const TAG_CATEGORIES = [
 
 const PALETTE = ["#e8825a","#5a9ee8","#5ac87a","#c85a8a","#c8a85a","#8a5ac8","#5ac8c8","#e8c05a"];
 const tagColor = (t) => PALETTE[Math.abs([...t].reduce((a,c)=>a+c.charCodeAt(0),0)) % PALETTE.length];
-
-const base = {
-  input: { padding:"11px 14px", borderRadius:12, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:14, outline:"none", boxSizing:"border-box", width:"100%" },
-  btn: (bg, color="#fff") => ({ border:"none", borderRadius:12, padding:"10px 18px", background:bg, color, fontWeight:700, fontSize:14, cursor:"pointer" }),
-};
 
 function ConfirmDialog({ msg, onOk, onCancel }) {
   return (
@@ -126,8 +123,8 @@ function TagEditor({ tags, onSave, onClose }) {
           <button onClick={onClose} style={{ background:"none", border:"none", color:G.sub, fontSize:20, cursor:"pointer" }}>✕</button>
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-          <input value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCustom()} placeholder="カスタムタグ..." style={{ ...base.input, flex:1 }}/>
-          <button onClick={addCustom} style={{ ...base.btn("linear-gradient(135deg,#e8825a,#c8603a)"), flexShrink:0 }}>追加</button>
+          <input value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCustom()} placeholder="カスタムタグ..." style={{ flex:1, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13 }}/>
+          <button onClick={addCustom} style={{ padding:"9px 16px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#e8825a,#c8603a)", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", flexShrink:0 }}>追加</button>
         </div>
         {current.length>0&&<div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:10, background:G.input, borderRadius:12 }}>{current.map((t,i)=><Tag key={i} label={t} active onRemove={()=>toggle(t)}/>)}</div>}
         {TAG_CATEGORIES.map((cat,ci)=>(
@@ -199,27 +196,15 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
       source: recipe.source||"",
       sourceUrl: recipe.sourceUrl||"",
       tags: [...(recipe.tags||[])],
-      ingredients: (recipe.ingredients||[]).length>0 ? [...recipe.ingredients] : [{name:"",amount:""}],
-      steps: (recipe.steps||[]).length>0 ? [...recipe.steps] : [""],
+      ingredients: (recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],
+      steps: (recipe.steps||[]).length>0?[...recipe.steps]:[""],
     });
     setEditing(true);
   };
 
   const saveEdit = () => {
     if (!editData.title.trim()) return;
-    onUpdate({
-      ...recipe,
-      title: editData.title.trim(),
-      description: editData.description.trim(),
-      emoji: editData.emoji,
-      time: editData.time.trim()||null,
-      servings: editData.servings ? editData.servings+"人分" : null,
-      source: editData.source.trim()||null,
-      sourceUrl: editData.sourceUrl.trim()||null,
-      tags: editData.tags,
-      ingredients: editData.ingredients.filter(i=>i.name.trim()),
-      steps: editData.steps.filter(s=>s.trim()),
-    });
+    onUpdate({ ...recipe, title:editData.title.trim(), description:editData.description.trim(), emoji:editData.emoji, time:editData.time.trim()||null, servings:editData.servings?editData.servings+"人分":null, source:editData.source.trim()||null, sourceUrl:editData.sourceUrl.trim()||null, tags:editData.tags, ingredients:editData.ingredients.filter(i=>i.name.trim()), steps:editData.steps.filter(s=>s.trim()) });
     setEditing(false);
   };
 
@@ -233,7 +218,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
     setCommentText(""); setCommentPhoto(null);
   };
 
-  const inStyle = { padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, outline:"none", boxSizing:"border-box" };
+  const inStyle = { padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13 };
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"#000d", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -241,6 +226,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
       {confirmDeleteComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDeleteComment)});setConfirmDeleteComment(null);}} onCancel={()=>setConfirmDeleteComment(null)}/>}
 
       <div onClick={e=>e.stopPropagation()} style={{ background:G.dark, borderRadius:24, maxWidth:540, width:"100%", maxHeight:"90vh", overflowY:"auto", boxShadow:"0 30px 80px #000c", border:"2px solid "+c1+"55" }}>
+
         {/* Hero */}
         <div style={{ height:150, background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:82, borderRadius:"22px 22px 0 0", position:"relative" }}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
@@ -254,20 +240,20 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
 
         <div style={{ padding:"18px 20px 30px" }}>
           {editing ? (
-            /* ── EDIT MODE ── */
+            /* ── 編集モード ── */
             <div>
               <div style={{ fontFamily:"'Zen Kaku Gothic New',sans-serif", fontSize:18, fontWeight:900, color:G.accent, marginBottom:16 }}>✏️ レシピを編集</div>
-              <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+              <div style={{ display:"flex", gap:10, marginBottom:10 }}>
                 <input value={editData.emoji} onChange={e=>setEditData(d=>({...d,emoji:e.target.value}))} style={{ ...inStyle, width:56, textAlign:"center", fontSize:22, padding:"8px" }}/>
                 <input value={editData.title} onChange={e=>setEditData(d=>({...d,title:e.target.value}))} placeholder="料理名" style={{ ...inStyle, flex:1 }}/>
               </div>
-              <input value={editData.description} onChange={e=>setEditData(d=>({...d,description:e.target.value}))} placeholder="一言説明" style={{ ...inStyle, width:"100%", marginBottom:10 }}/>
+              <input value={editData.description} onChange={e=>setEditData(d=>({...d,description:e.target.value}))} placeholder="一言説明" style={{ ...inStyle, width:"100%", marginBottom:10, display:"block" }}/>
               <div style={{ display:"flex", gap:10, marginBottom:10 }}>
                 <input value={editData.time} onChange={e=>setEditData(d=>({...d,time:e.target.value}))} placeholder="調理時間" style={{ ...inStyle, flex:1 }}/>
                 <input value={editData.servings} onChange={e=>setEditData(d=>({...d,servings:e.target.value}))} placeholder="人数" type="number" min="1" style={{ ...inStyle, flex:1 }}/>
               </div>
-              <input value={editData.source} onChange={e=>setEditData(d=>({...d,source:e.target.value}))} placeholder="出典・SNS" style={{ ...inStyle, width:"100%", marginBottom:10 }}/>
-              <input value={editData.sourceUrl} onChange={e=>setEditData(d=>({...d,sourceUrl:e.target.value}))} placeholder="参照URL" style={{ ...inStyle, width:"100%", marginBottom:14 }}/>
+              <input value={editData.source} onChange={e=>setEditData(d=>({...d,source:e.target.value}))} placeholder="出典・SNS" style={{ ...inStyle, width:"100%", marginBottom:10, display:"block" }}/>
+              <input value={editData.sourceUrl} onChange={e=>setEditData(d=>({...d,sourceUrl:e.target.value}))} placeholder="参照URL" style={{ ...inStyle, width:"100%", marginBottom:14, display:"block" }}/>
 
               <div style={{ marginBottom:14 }}>
                 <div style={{ fontSize:12, color:G.sub, marginBottom:8 }}>🏷 タグ</div>
@@ -290,12 +276,27 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
               </div>
 
               <div style={{ marginBottom:18 }}>
-                <div style={{ fontSize:12, color:G.sub, marginBottom:8 }}>👨‍🍳 作り方</div>
+                <div style={{ fontSize:12, color:G.sub, marginBottom:8 }}>👨‍🍳 作り方（📷 写真も追加できます）</div>
                 {editData.steps.map((step,i)=>(
-                  <div key={i} style={{ display:"flex", gap:8, marginBottom:8, alignItems:"flex-start" }}>
-                    <div style={{ background:"linear-gradient(135deg,#5ac87a,#3aa85a)", color:"#fff", borderRadius:"50%", minWidth:26, height:26, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700 }}>{i+1}</div>
-                    <textarea value={step} onChange={e=>{const a=[...editData.steps];a[i]=e.target.value;setEditData(d=>({...d,steps:a}));}} rows={2} placeholder={"手順 "+(i+1)} style={{ ...inStyle, flex:1, resize:"vertical" }}/>
-                    <button onClick={()=>setEditData(d=>({...d,steps:d.steps.filter((_,idx)=>idx!==i)}))} style={{ background:G.input, border:"none", borderRadius:8, width:34, height:34, marginTop:4, color:G.sub, cursor:"pointer", fontSize:14, flexShrink:0 }}>✕</button>
+                  <div key={i} style={{ marginBottom:12 }}>
+                    <div style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:8 }}>
+                      <div style={{ background:"linear-gradient(135deg,#5ac87a,#3aa85a)", color:"#fff", borderRadius:"50%", minWidth:26, height:26, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700 }}>{i+1}</div>
+                      <textarea value={step} onChange={e=>{const a=[...editData.steps];a[i]=e.target.value;setEditData(d=>({...d,steps:a}));}} rows={2} placeholder={"手順 "+(i+1)} style={{ ...inStyle, flex:1, resize:"vertical" }}/>
+                      <button onClick={()=>setEditData(d=>({...d,steps:d.steps.filter((_,idx)=>idx!==i)}))} style={{ background:G.input, border:"none", borderRadius:8, width:34, height:34, marginTop:4, color:G.sub, cursor:"pointer", fontSize:14, flexShrink:0 }}>✕</button>
+                    </div>
+                    {/* 手順ごとの写真（編集モードのみ） */}
+                    <div style={{ marginLeft:34 }}>
+                      <input ref={el=>{stepPhotoRefs.current[i]=el;}} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0];if(f)handleStepPhoto(f,i);e.target.value="";}}/>
+                      {recipe.stepPhotos&&recipe.stepPhotos[i] ? (
+                        <div style={{ position:"relative" }}>
+                          <img src={recipe.stepPhotos[i]} alt={"手順"+(i+1)} style={{ width:"100%", borderRadius:10, maxHeight:160, objectFit:"cover" }}/>
+                          <button onClick={()=>{const sp={...(recipe.stepPhotos||{})};delete sp[i];onUpdate({...recipe,stepPhotos:sp});}} style={{ position:"absolute", top:6, right:6, background:"#000a", border:"none", borderRadius:"50%", width:24, height:24, cursor:"pointer", color:"#fff", fontSize:12 }}>✕</button>
+                          <button onClick={()=>stepPhotoRefs.current[i]?.click()} style={{ position:"absolute", bottom:6, right:6, background:"#000a", border:"1px solid #ffffff44", borderRadius:8, padding:"3px 8px", color:"#fff", fontSize:10, cursor:"pointer" }}>📷 変更</button>
+                        </div>
+                      ) : (
+                        <button onClick={()=>stepPhotoRefs.current[i]?.click()} style={{ padding:"6px 12px", borderRadius:8, border:"1.5px dashed "+G.border, background:G.input, color:G.sub, fontSize:12, cursor:"pointer" }}>📷 手順写真を追加</button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <button onClick={()=>setEditData(d=>({...d,steps:[...d.steps,""]}))} style={{ width:"100%", padding:9, borderRadius:10, border:"1.5px dashed "+G.border, background:G.input, color:G.sub, fontSize:13, cursor:"pointer" }}>＋ 手順を追加</button>
@@ -307,7 +308,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
               </div>
             </div>
           ) : (
-            /* ── VIEW MODE ── */
+            /* ── 表示モード ── */
             <div>
               <div style={{ fontFamily:"'Zen Kaku Gothic New',sans-serif", fontSize:22, fontWeight:900, color:G.text, marginBottom:4 }}>{recipe.title}</div>
               <div style={{ color:G.sub, fontSize:13, marginBottom:12 }}>{recipe.description}</div>
@@ -337,7 +338,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
               )}
 
               <div style={{ display:"flex", background:G.card, borderRadius:14, padding:4, marginBottom:18, gap:4 }}>
-                {[{id:"recipe",label:"📋 レシピ"},{id:"comments",label:"💬 記録"+((recipe.comments||[]).length>0?" ("+(recipe.comments.length+")"):"")}].map(t=>(
+                {[{id:"recipe",label:"📋 レシピ"},{id:"comments",label:"💬 記録"+((recipe.comments||[]).length>0?" ("+(recipe.comments.length)+")" :"")}].map(t=>(
                   <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px", borderRadius:11, border:"none", background:tab===t.id?"linear-gradient(135deg,#e8825a,#c8603a)":"transparent", color:tab===t.id?"#fff":G.sub, fontWeight:tab===t.id?700:400, cursor:"pointer", fontSize:12 }}>{t.label}</button>
                 ))}
               </div>
@@ -348,7 +349,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
                     <div style={{ marginBottom:20 }}>
                       <div style={{ fontWeight:700, color:G.accent, fontSize:13, marginBottom:10 }}>
                         {"🥘 材料"}
-                        {scale!==1&&<span style={{ fontWeight:400, color:G.accent, fontSize:11, marginLeft:8 }}>{"（×"+scale.toFixed(1)+" 換算）"}</span>}
+                        {scale!==1&&<span style={{ fontWeight:400, fontSize:11, marginLeft:8 }}>{"（×"+scale.toFixed(1)+" 換算）"}</span>}
                       </div>
                       <div style={{ background:G.card, borderRadius:14, padding:"6px 14px", border:"1.5px solid "+G.accent+"33" }}>
                         {recipe.ingredients.map((ing,i)=>(
@@ -368,15 +369,10 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
                           <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
                             <div style={{ background:"linear-gradient(135deg,#5ac87a,#3aa85a)", color:"#fff", borderRadius:"50%", minWidth:26, height:26, marginTop:1, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700 }}>{i+1}</div>
                             <div style={{ flex:1, fontSize:13, color:G.text, lineHeight:1.75 }}>{step}</div>
-                            <div>
-                              <input ref={el=>{stepPhotoRefs.current[i]=el;}} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0];if(f)handleStepPhoto(f,i);e.target.value="";}}/>
-                              <button onClick={()=>stepPhotoRefs.current[i]?.click()} style={{ background:G.input, border:"none", borderRadius:8, padding:"4px 8px", color:G.sub, fontSize:11, cursor:"pointer" }}>📷</button>
-                            </div>
                           </div>
                           {recipe.stepPhotos&&recipe.stepPhotos[i]&&(
-                            <div style={{ position:"relative", marginTop:10 }}>
+                            <div style={{ marginTop:10 }}>
                               <img src={recipe.stepPhotos[i]} alt={"手順"+(i+1)} style={{ width:"100%", borderRadius:10, maxHeight:200, objectFit:"cover" }}/>
-                              <button onClick={()=>{const sp={...(recipe.stepPhotos||{})};delete sp[i];onUpdate({...recipe,stepPhotos:sp});}} style={{ position:"absolute", top:6, right:6, background:"#000a", border:"none", borderRadius:"50%", width:24, height:24, cursor:"pointer", color:"#fff", fontSize:12 }}>✕</button>
                             </div>
                           )}
                         </div>
@@ -403,7 +399,9 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
                               <div style={{ fontSize:12, fontWeight:700, color:G.text }}>{c.author}</div>
                               <div style={{ fontSize:10, color:G.sub }}>{c.createdAt}</div>
                             </div>
-                            {c.author===userName&&<button onClick={()=>setConfirmDeleteComment(c.id)} style={{ background:"none", border:"none", color:"#e85a5a", cursor:"pointer", fontSize:13 }}>🗑</button>}
+                            {c.author===userName&&(
+                              <button onClick={()=>setConfirmDeleteComment(c.id)} style={{ background:"none", border:"none", color:"#e85a5a", cursor:"pointer", fontSize:16 }}>🗑</button>
+                            )}
                           </div>
                           {c.photo&&<img src={c.photo} alt="投稿写真" style={{ width:"100%", borderRadius:10, marginBottom:c.text?9:0, maxHeight:240, objectFit:"cover" }}/>}
                           {c.text&&<div style={{ fontSize:13, color:"#c0b8d0", lineHeight:1.75 }}>{c.text}</div>}
@@ -413,7 +411,7 @@ function RecipeDetail({ recipe, onClose, onUpdate, userName }) {
                   )}
                   <div style={{ background:G.card, borderRadius:16, padding:14, border:"1.5px solid "+G.border }}>
                     <div style={{ fontSize:12, fontWeight:700, color:G.accent, marginBottom:10 }}>▸ 記録を追加</div>
-                    <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="感想・アレンジ・メモなど..." rows={3} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, outline:"none", resize:"none", boxSizing:"border-box", lineHeight:1.6, marginBottom:10 }}/>
+                    <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="感想・アレンジ・メモなど..." rows={3} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, resize:"none", boxSizing:"border-box", lineHeight:1.6, marginBottom:10, display:"block" }}/>
                     {photoLoading&&<div style={{ color:G.accent, fontSize:12, marginBottom:8, textAlign:"center" }}>読み込み中...</div>}
                     {commentPhoto&&!photoLoading&&(
                       <div style={{ position:"relative", marginBottom:10 }}>
@@ -450,7 +448,7 @@ function ManualForm({ onAdd, onBack }) {
   const [showTagEditor, setShowTagEditor] = useState(false);
   const [toast, setToast] = useState("");
 
-  const inStyle = { padding:"11px 14px", borderRadius:12, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:14, outline:"none", boxSizing:"border-box", width:"100%", marginBottom:10 };
+  const inStyle = { padding:"11px 14px", borderRadius:12, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:14, display:"block", width:"100%", marginBottom:10 };
 
   const submit = () => {
     if (!title.trim()) { setToast("⚠️ 料理名を入力してください"); return; }
@@ -459,13 +457,13 @@ function ManualForm({ onAdd, onBack }) {
 
   return (
     <div style={{ minHeight:"100vh", background:G.dark, padding:24 }}>
-      <style>{"@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap'); *, *::before, *::after { box-sizing:border-box; }"}</style>
+      <style>{GLOBAL_CSS}</style>
       {showTagEditor&&<TagEditor tags={tags} onSave={t=>{setTags(t);setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
       <div style={{ maxWidth:500, margin:"0 auto" }}>
         <button onClick={onBack} style={{ background:"none", border:"none", color:G.accent, fontSize:14, cursor:"pointer", padding:0, marginBottom:20 }}>← 戻る</button>
         <div style={{ fontFamily:"'Zen Kaku Gothic New',sans-serif", fontSize:22, fontWeight:900, color:G.text, marginBottom:20 }}>✍️ レシピを手書き</div>
 
-        <div style={{ display:"flex", gap:10, marginBottom:0 }}>
+        <div style={{ display:"flex", gap:10 }}>
           <div>
             <div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>絵文字</div>
             <input value={emoji} onChange={e=>setEmoji(e.target.value)} style={{ ...inStyle, width:60, textAlign:"center", fontSize:24, padding:"8px" }}/>
@@ -475,12 +473,21 @@ function ManualForm({ onAdd, onBack }) {
             <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="例：唐揚げ" style={inStyle}/>
           </div>
         </div>
+
         <div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>一言説明</div>
         <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="例：サクサクジューシー！" style={inStyle}/>
+
         <div style={{ display:"flex", gap:10 }}>
-          <div style={{ flex:1 }}><div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>⏱ 調理時間</div><input value={time} onChange={e=>setTime(e.target.value)} placeholder="30分" style={inStyle}/></div>
-          <div style={{ flex:1 }}><div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>👥 人数</div><input value={servings} onChange={e=>setServings(e.target.value)} placeholder="2" type="number" min="1" style={inStyle}/></div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>⏱ 調理時間</div>
+            <input value={time} onChange={e=>setTime(e.target.value)} placeholder="30分" style={inStyle}/>
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>👥 人数</div>
+            <input value={servings} onChange={e=>setServings(e.target.value)} placeholder="2" type="number" min="1" style={inStyle}/>
+          </div>
         </div>
+
         <div style={{ fontSize:12, color:G.sub, marginBottom:6 }}>📌 出典・SNS</div>
         <input value={source} onChange={e=>setSource(e.target.value)} placeholder="例：自作 / Instagram" style={inStyle}/>
 
@@ -496,8 +503,8 @@ function ManualForm({ onAdd, onBack }) {
           <div style={{ fontSize:12, color:G.sub, marginBottom:8 }}>🥘 材料</div>
           {ingredients.map((ing,i)=>(
             <div key={i} style={{ display:"flex", gap:8, marginBottom:8 }}>
-              <input value={ing.name} onChange={e=>{const a=[...ingredients];a[i]={...a[i],name:e.target.value};setIngredients(a);}} placeholder="材料名" style={{ flex:2, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, outline:"none" }}/>
-              <input value={ing.amount} onChange={e=>{const a=[...ingredients];a[i]={...a[i],amount:e.target.value};setIngredients(a);}} placeholder="分量" style={{ flex:1, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, outline:"none" }}/>
+              <input value={ing.name} onChange={e=>{const a=[...ingredients];a[i]={...a[i],name:e.target.value};setIngredients(a);}} placeholder="材料名" style={{ flex:2, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13 }}/>
+              <input value={ing.amount} onChange={e=>{const a=[...ingredients];a[i]={...a[i],amount:e.target.value};setIngredients(a);}} placeholder="分量" style={{ flex:1, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13 }}/>
               <button onClick={()=>setIngredients(ingredients.filter((_,idx)=>idx!==i))} style={{ background:G.input, border:"none", borderRadius:8, width:34, color:G.sub, cursor:"pointer", fontSize:14, flexShrink:0 }}>✕</button>
             </div>
           ))}
@@ -509,7 +516,7 @@ function ManualForm({ onAdd, onBack }) {
           {steps.map((step,i)=>(
             <div key={i} style={{ display:"flex", gap:8, marginBottom:8, alignItems:"flex-start" }}>
               <div style={{ background:"linear-gradient(135deg,#5ac87a,#3aa85a)", color:"#fff", borderRadius:"50%", minWidth:26, height:26, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700 }}>{i+1}</div>
-              <textarea value={step} onChange={e=>{const a=[...steps];a[i]=e.target.value;setSteps(a);}} placeholder={"手順 "+(i+1)} rows={2} style={{ flex:1, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, outline:"none", resize:"vertical" }}/>
+              <textarea value={step} onChange={e=>{const a=[...steps];a[i]=e.target.value;setSteps(a);}} placeholder={"手順 "+(i+1)} rows={2} style={{ flex:1, padding:"9px 12px", borderRadius:10, border:"1.5px solid "+G.border, background:G.input, color:G.text, fontSize:13, resize:"vertical" }}/>
               <button onClick={()=>setSteps(steps.filter((_,idx)=>idx!==i))} style={{ background:G.input, border:"none", borderRadius:8, width:34, height:34, marginTop:4, color:G.sub, cursor:"pointer", fontSize:14, flexShrink:0 }}>✕</button>
             </div>
           ))}
@@ -531,7 +538,7 @@ function AddScreen({ onBack, onAdd, userName }) {
   const [toast, setToast] = useState("");
   const fileRef = useRef();
 
-  if (mode==="manual") return <ManualForm onAdd={r=>{onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")});}} onBack={()=>setMode("image")}/>;
+  if (mode==="manual") return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
 
   const process = async ({imageFile, text}) => {
     setLoading(true);
@@ -544,15 +551,17 @@ function AddScreen({ onBack, onAdd, userName }) {
 
   return (
     <div style={{ minHeight:"100vh", background:G.dark, padding:24 }}>
-      <style>{"@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap'); *, *::before, *::after { box-sizing:border-box; }"}</style>
+      <style>{GLOBAL_CSS}</style>
       <div style={{ maxWidth:500, margin:"0 auto" }}>
         <button onClick={onBack} style={{ background:"none", border:"none", color:G.accent, fontSize:14, cursor:"pointer", padding:0, marginBottom:22 }}>← 戻る</button>
         <div style={{ fontFamily:"'Zen Kaku Gothic New',sans-serif", fontSize:22, fontWeight:900, color:G.text, marginBottom:20 }}>レシピを追加</div>
+
         <div style={{ display:"flex", background:G.card, borderRadius:14, padding:4, marginBottom:22, gap:3, border:"1.5px solid "+G.border }}>
           {[{id:"image",label:"📸 スクショ"},{id:"text",label:"🔗 URL"},{id:"manual",label:"✍️ 手書き"}].map(m=>(
             <button key={m.id} onClick={()=>setMode(m.id)} style={{ flex:1, padding:"10px 6px", borderRadius:11, border:"none", background:mode===m.id?"linear-gradient(135deg,#e8825a,#c8603a)":"transparent", color:mode===m.id?"#fff":G.sub, fontWeight:mode===m.id?700:400, cursor:"pointer", fontSize:12 }}>{m.label}</button>
           ))}
         </div>
+
         {mode==="image"&&(
           <div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0];if(f)process({imageFile:f});e.target.value="";}}/>
@@ -568,9 +577,10 @@ function AddScreen({ onBack, onAdd, userName }) {
             </div>
           </div>
         )}
+
         {mode==="text"&&(
           <div>
-            <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{ width:"100%", padding:"14px 16px", borderRadius:14, border:"2px solid "+G.border, background:G.card, color:G.text, fontSize:14, outline:"none", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 }}/>
+            <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{ width:"100%", padding:"14px 16px", borderRadius:14, border:"2px solid "+G.border, background:G.card, color:G.text, fontSize:14, resize:"vertical", boxSizing:"border-box", lineHeight:1.6, display:"block" }}/>
             <button onClick={()=>process({text:textInput})} disabled={loading||!textInput.trim()} style={{ width:"100%", marginTop:12, padding:"14px", borderRadius:14, border:"none", background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)", color:G.text, fontSize:15, fontWeight:700, cursor:loading||!textInput.trim()?"default":"pointer" }}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
           </div>
         )}
@@ -589,8 +599,6 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
   const [toast, setToast] = useState("");
-
-  const GLOBAL_STYLE = "*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; } body { background:"+G.dark+"; } @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap');";
 
   useEffect(() => {
     try {
@@ -614,13 +622,13 @@ export default function App() {
   });
 
   if (!userName) return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,"+G.dark+" 0%,#1a1a2e 50%,#1e1a2e 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <style>{GLOBAL_STYLE}</style>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <style>{GLOBAL_CSS}</style>
       <div style={{ maxWidth:360, width:"100%", textAlign:"center" }}>
         <div style={{ fontSize:72, marginBottom:8 }}>🍳</div>
         <div style={{ fontFamily:"'Zen Kaku Gothic New',sans-serif", fontSize:28, fontWeight:900, marginBottom:6, background:"linear-gradient(135deg,#e8825a,#c85a8a)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>レシピノート</div>
         <div style={{ color:G.sub, fontSize:13, marginBottom:32, lineHeight:1.9 }}>SNS・スクショからレシピをまとめて<br/>管理できるツール</div>
-        <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&nameInput.trim()){localStorage.setItem("rs-name",nameInput.trim());setUserName(nameInput.trim());}}} placeholder="あなたの名前を入力" style={{ width:"100%", padding:"15px 16px", borderRadius:14, border:"2px solid "+G.border, background:G.card, color:G.text, fontSize:15, outline:"none", marginBottom:12 }}/>
+        <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&nameInput.trim()){localStorage.setItem("rs-name",nameInput.trim());setUserName(nameInput.trim());}}} placeholder="あなたの名前を入力" style={{ width:"100%", padding:"15px 16px", borderRadius:14, border:"2px solid "+G.border, background:G.card, color:G.text, fontSize:15, marginBottom:12, display:"block" }}/>
         <button onClick={()=>{if(nameInput.trim()){localStorage.setItem("rs-name",nameInput.trim());setUserName(nameInput.trim());}}} style={{ width:"100%", padding:"15px", borderRadius:14, border:"none", background:nameInput.trim()?"linear-gradient(135deg,#e8825a,#c8603a)":G.input, color:G.text, fontSize:15, fontWeight:700, cursor:nameInput.trim()?"pointer":"default", boxShadow:nameInput.trim()?"0 6px 20px #e8825a44":"none" }}>はじめる →</button>
       </div>
     </div>
@@ -630,7 +638,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight:"100vh", background:G.dark }}>
-      <style>{GLOBAL_STYLE}</style>
+      <style>{GLOBAL_CSS}</style>
       <div style={{ background:"linear-gradient(135deg,#13132a,#1e1a2e)", borderBottom:"2px solid "+G.accent+"44", padding:"16px 20px 18px", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ maxWidth:740, margin:"0 auto" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
@@ -642,7 +650,7 @@ export default function App() {
           </div>
           <div style={{ position:"relative", marginBottom:allTags.length>0?10:0 }}>
             <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:G.sub }}>🔍</span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="レシピ名・タグで検索" style={{ width:"100%", padding:"10px 14px 10px 34px", borderRadius:12, border:"1.5px solid "+G.border, background:G.card, color:G.text, fontSize:13, outline:"none" }}/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="レシピ名・タグで検索" style={{ width:"100%", padding:"10px 14px 10px 34px", borderRadius:12, border:"1.5px solid "+G.border, background:G.card, color:G.text, fontSize:13 }}/>
           </div>
           {allTags.length>0&&(
             <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:2 }}>
