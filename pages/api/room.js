@@ -6,6 +6,8 @@ const FIXED_CODE = "SHARED";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY;
 
+const toMs=(v)=>{if(!v)return 0;const d=new Date(v);return isNaN(d)?0:d.getTime();};
+
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + "/rest/v1" + path, {
     ...options,
@@ -73,13 +75,10 @@ export default async function handler(req, res) {
     (room.recipes || []).forEach(r => map.set(r.id, r));
     (recipes || []).forEach(r => {
       const ex = map.get(r.id);
-      if (!ex) {
-        map.set(r.id, r);
-      } else {
-        const lu = ex.updatedAt || ex.addedAt || "";
-        const ru = r.updatedAt || r.addedAt || "";
-        if (ru >= lu) map.set(r.id, r);
-      }
+      if (!ex) { map.set(r.id, r); return; }
+      const lu = toMs(ex.updatedAt || ex.addedAt);
+      const ru = toMs(r.updatedAt || r.addedAt);
+      if (ru > lu) map.set(r.id, r);
     });
 
     const merged = Array.from(map.values());
