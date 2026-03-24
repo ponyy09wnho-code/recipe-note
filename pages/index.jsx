@@ -39,6 +39,31 @@ async function readFile(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("失敗"));r.readAsDataURL(file);});
 }
 
+// AI送信用圧縮（小さめ・軽量）
+async function compressForAI(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const MAX=768;
+      let w=img.width,h=img.height;
+      if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+      const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve({base64:reader.result.split(",")[1],mediaType:"image/jpeg"});
+        reader.onerror=()=>reject(new Error("圧縮失敗"));
+        reader.readAsDataURL(blob);
+      },"image/jpeg",0.7);
+    };
+    img.onerror=()=>reject(new Error("画像読み込み失敗"));
+    img.src=url;
+  });
+}
+
+// Storage用圧縮（高品質）
 async function compressAndUpload(file,pathPrefix){
   return new Promise((resolve,reject)=>{
     const img=new Image();
@@ -50,7 +75,7 @@ async function compressAndUpload(file,pathPrefix){
         let w=img.width,h=img.height;
         if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
         const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
-        const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,w,h);
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
         canvas.toBlob(async(blob)=>{
           try{
             const reader=new FileReader();
@@ -76,7 +101,6 @@ async function deleteStoragePhotos(paths){
   if(!paths||!paths.length)return;
   try{await fetch("/api/upload",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({paths})});}catch{}
 }
-
 function extractStoragePaths(recipe){
   const paths=[];
   if(recipe.photo&&recipe.photo.includes("supabase"))paths.push("hero/"+recipe.id);
@@ -87,7 +111,12 @@ function extractStoragePaths(recipe){
 
 async function extractRecipe({imageFile,text}){
   let imageBase64=null,imageMediaType=null;
-  if(imageFile){const d=await readFile(imageFile);imageBase64=d.split(",")[1];imageMediaType=imageFile.type||"image/jpeg";}
+  if(imageFile){
+    // AI送信前に圧縮してサイズ削減
+    const compressed=await compressForAI(imageFile);
+    imageBase64=compressed.base64;
+    imageMediaType=compressed.mediaType;
+  }
   const prompt=imageFile?"この画像からレシピ情報を抽出してください。":"以下からレシピを抽出してください:\n\n"+text;
   const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imageBase64,imageMediaType})});
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error||"エラー");}
@@ -192,13 +221,22 @@ async function fetchRemote(userName){
   return res.json();
 }
 
-const TAG_CATS=[
+const DEFAULT_TAG_CATS=[
   {label:"🍱 ジャンル",tags:["和食","洋食","中華","韓国料理","イタリアン","エスニック","デザート","スープ"]},
   {label:"🥦 野菜",tags:["葉野菜","根菜","豆類","きのこ","トマト","なす","じゃがいも","玉ねぎ"]},
   {label:"🥩 食材",tags:["鶏肉","豚肉","牛肉","魚介","卵","豆腐","乳製品","パスタ","米"]},
   {label:"⏱ 手間",tags:["簡単","時短","本格","作り置き","5分","15分","30分"]},
   {label:"🍽 用途",tags:["主菜","副菜","汁物","お弁当","おつまみ","朝食","パーティー"]},
 ];
+const TAG_CATS_KEY="recipe-tag-cats";
+function loadTagCats(){
+  if(typeof window==="undefined")return DEFAULT_TAG_CATS;
+  try{const s=localStorage.getItem(TAG_CATS_KEY);return s?JSON.parse(s):DEFAULT_TAG_CATS;}catch{return DEFAULT_TAG_CATS;}
+}
+function saveTagCats(cats){
+  try{localStorage.setItem(TAG_CATS_KEY,JSON.stringify(cats));}catch{}
+}
+
 const PAL=["#e8825a","#5a9ee8","#5ac87a","#c85a8a","#c8a85a","#8a5ac8","#5ac8c8","#e8c05a"];
 const tagColor=(t)=>PAL[Math.abs([...t].reduce((a,c)=>a+c.charCodeAt(0),0))%PAL.length];
 
@@ -238,30 +276,67 @@ function Tag({label,active,onClick,onRemove}){
     </span>
   );
 }
+
+// ── タグ編集（レシピ個別）─────────────────────────────
 function TagEditor({tags,onSave,onClose}){
   const [cur,setCur]=useState([...tags]);
   const [custom,setCustom]=useState("");
   const [open,setOpen]=useState({0:true});
+  const [tagCats,setTagCats]=useState(()=>loadTagCats());
+  const [editingCat,setEditingCat]=useState(null);
+  const [newCatTag,setNewCatTag]=useState("");
   const toggle=(t)=>setCur(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]);
   const add=()=>{if(!custom.trim()||cur.includes(custom.trim()))return;setCur(p=>[...p,custom.trim()]);setCustom("");};
+  const addToCat=(ci,tag)=>{
+    if(!tag.trim())return;
+    const updated=tagCats.map((cat,i)=>i===ci?{...cat,tags:[...cat.tags,tag.trim()]}:cat);
+    setTagCats(updated);saveTagCats(updated);setNewCatTag("");setEditingCat(null);
+  };
+  const removeFromCat=(ci,ti)=>{
+    const updated=tagCats.map((cat,i)=>i===ci?{...cat,tags:cat.tags.filter((_,j)=>j!==ti)}:cat);
+    setTagCats(updated);saveTagCats(updated);
+  };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"80vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"85vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{fontWeight:700,color:G.text,fontSize:16}}>🏷 タグを編集</div>
           <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
+        {/* カスタム追加 */}
         <div style={{display:"flex",gap:8,marginBottom:12}}>
-          <input value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="カスタムタグ..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
+          <input value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="カスタムタグを直接追加..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
           <button onClick={add} style={{padding:"9px 16px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>追加</button>
         </div>
+        {/* 選択中タグ */}
         {cur.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14,padding:10,background:G.input,borderRadius:12}}>{cur.map((t,i)=><Tag key={i} label={t} active onRemove={()=>toggle(t)}/>)}</div>}
-        {TAG_CATS.map((cat,ci)=>(
+        {/* カテゴリ別 */}
+        {tagCats.map((cat,ci)=>(
           <div key={ci} style={{marginBottom:8,border:"1.5px solid "+G.border,borderRadius:12,overflow:"hidden"}}>
             <button onClick={()=>setOpen(p=>({...p,[ci]:!p[ci]}))} style={{width:"100%",padding:"10px 14px",border:"none",background:open[ci]?G.input+"cc":G.input,color:G.text,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",justifyContent:"space-between"}}>
               <span>{cat.label}</span><span style={{color:G.sub}}>{open[ci]?"▲":"▼"}</span>
             </button>
-            {open[ci]&&<div style={{display:"flex",flexWrap:"wrap",gap:5,padding:"10px 12px",background:"#ffffff05"}}>{cat.tags.map((t,ti)=><Tag key={ti} label={t} active={cur.includes(t)} onClick={()=>toggle(t)}/>)}</div>}
+            {open[ci]&&(
+              <div style={{padding:"10px 12px",background:"#ffffff05"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+                  {cat.tags.map((t,ti)=>(
+                    <span key={ti} style={{display:"inline-flex",alignItems:"center",gap:3}}>
+                      <Tag label={t} active={cur.includes(t)} onClick={()=>toggle(t)}/>
+                      <span onClick={()=>removeFromCat(ci,ti)} style={{fontSize:9,color:G.sub,cursor:"pointer",padding:"0 2px"}}>✕</span>
+                    </span>
+                  ))}
+                </div>
+                {editingCat===ci?(
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={newCatTag} onChange={e=>setNewCatTag(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addToCat(ci,newCatTag);if(e.key==="Escape")setEditingCat(null);}} autoFocus placeholder="新しいタグ名..." style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid "+G.accent,background:G.input,color:G.text,fontSize:12,WebkitAppearance:"none"}}/>
+                    <button onClick={()=>addToCat(ci,newCatTag)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:G.accent,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:700}}>追加</button>
+                    <button onClick={()=>setEditingCat(null)} style={{padding:"6px 10px",borderRadius:8,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontSize:12,cursor:"pointer"}}>✕</button>
+                  </div>
+                ):(
+                  <button onClick={()=>{setEditingCat(ci);setNewCatTag("");}} style={{padding:"4px 10px",borderRadius:8,border:"1.5px dashed "+G.border,background:"transparent",color:G.sub,fontSize:11,cursor:"pointer"}}>＋ このカテゴリに追加</button>
+                )}
+              </div>
+            )}
           </div>
         ))}
         <button onClick={()=>onSave(cur)} style={{width:"100%",marginTop:14,padding:"14px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"}}>保存する</button>
@@ -270,59 +345,152 @@ function TagEditor({tags,onSave,onClose}){
   );
 }
 
+// ── タグ全体管理 ───────────────────────────────────────
 function TagManagement({recipes,onUpdateAll,onClose}){
   const [editingTag,setEditingTag]=useState(null);
   const [editValue,setEditValue]=useState("");
   const [confirmDelete,setConfirmDelete]=useState(null);
   const [toast,setToast]=useState("");
+  const [tagCats,setTagCats]=useState(()=>loadTagCats());
+  const [editingCat,setEditingCat]=useState(null);
+  const [editCatValue,setEditCatValue]=useState("");
+  const [newCatTag,setNewCatTag]=useState("");
+  const [addingToCat,setAddingToCat]=useState(null);
+  const [open,setOpen]=useState({});
+
+  const activeRecipes=recipes.filter(r=>!r.deleted);
   const tagMap=useMemo(()=>{
     const map=new Map();
-    recipes.forEach(r=>{(r.tags||[]).forEach(t=>{map.set(t,(map.get(t)||0)+1);});});
+    activeRecipes.forEach(r=>{(r.tags||[]).forEach(t=>{map.set(t,(map.get(t)||0)+1);});});
     return new Map([...map.entries()].sort((a,b)=>b[1]-a[1]));
-  },[recipes]);
+  },[activeRecipes]);
+
   const renameTag=(oldTag,newTag)=>{
     if(!newTag.trim()||newTag===oldTag)return;
-    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).map(t=>t===oldTag?newTag.trim():t)}));
-    onUpdateAll(updated);setEditingTag(null);setToast("✅ タグを変更しました");
+    const updated=activeRecipes.map(r=>({...r,tags:(r.tags||[]).map(t=>t===oldTag?newTag.trim():t),updatedAt:new Date().toISOString()}));
+    // 全レシピ（墓石含む）に対してマージ
+    const merged=recipes.map(r=>updated.find(u=>u.id===r.id)||r);
+    onUpdateAll(merged);setEditingTag(null);setToast("✅ タグを変更しました");
   };
   const deleteTag=(tag)=>{
-    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).filter(t=>t!==tag)}));
+    const updated=recipes.map(r=>r.deleted?r:{...r,tags:(r.tags||[]).filter(t=>t!==tag),updatedAt:new Date().toISOString()});
     onUpdateAll(updated);setConfirmDelete(null);setToast("🗑 タグを削除しました");
   };
+  const saveCat=(cats)=>{setTagCats(cats);saveTagCats(cats);};
+  const addTagToCat=(ci,tag)=>{
+    if(!tag.trim())return;
+    const updated=tagCats.map((cat,i)=>i===ci?{...cat,tags:[...cat.tags,tag.trim()]}:cat);
+    saveCat(updated);setNewCatTag("");setAddingToCat(null);
+  };
+  const removeTagFromCat=(ci,ti)=>{
+    const updated=tagCats.map((cat,i)=>i===ci?{...cat,tags:cat.tags.filter((_,j)=>j!==ti)}:cat);
+    saveCat(updated);
+  };
+  const renameCat=(ci,label)=>{
+    if(!label.trim())return;
+    const updated=tagCats.map((cat,i)=>i===ci?{...cat,label:label.trim()}:cat);
+    saveCat(updated);setEditingCat(null);
+  };
+  const addNewCat=()=>{
+    const updated=[...tagCats,{label:"🆕 新カテゴリ",tags:[]}];
+    saveCat(updated);
+  };
+  const deleteCat=(ci)=>{
+    const updated=tagCats.filter((_,i)=>i!==ci);
+    saveCat(updated);
+  };
+
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:1500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       {confirmDelete&&<ConfirmDialog msg={"「"+confirmDelete+"」を全レシピから削除しますか？"} onOk={()=>deleteTag(confirmDelete)} onCancel={()=>setConfirmDelete(null)}/>}
-      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 44px",maxHeight:"85vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 44px",maxHeight:"90vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <div style={{fontWeight:700,color:G.text,fontSize:17}}>🏷 タグ管理</div>
           <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{fontSize:12,color:G.sub,marginBottom:18}}>タップで編集・削除できます</div>
-        {tagMap.size===0?(
-          <div style={{textAlign:"center",padding:"32px 0",color:G.sub,fontSize:13}}>タグがありません</div>
-        ):(
-          [...tagMap.entries()].map(([tag,count])=>(
-            <div key={tag} style={{marginBottom:8}}>
-              {editingTag===tag?(
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <input value={editValue} onChange={e=>setEditValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameTag(tag,editValue);if(e.key==="Escape")setEditingTag(null);}} autoFocus style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.accent,background:G.input,color:G.text,fontSize:14,WebkitAppearance:"none"}}/>
-                  <button onClick={()=>renameTag(tag,editValue)} style={{padding:"9px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>変更</button>
-                  <button onClick={()=>setEditingTag(null)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer",flexShrink:0}}>✕</button>
-                </div>
-              ):(
-                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,background:G.input,border:"1.5px solid "+G.border}}>
-                  <div style={{flex:1,display:"flex",alignItems:"center",gap:10}}>
-                    <Tag label={tag}/>
-                    <span style={{fontSize:11,color:G.sub}}>{count}品</span>
+        <div style={{fontSize:12,color:G.sub,marginBottom:16}}>使用中のタグ一覧・カテゴリの編集ができます</div>
+
+        {/* 使用中タグ一覧 */}
+        <div style={{background:G.input,borderRadius:14,padding:14,marginBottom:16,border:"1.5px solid "+G.border}}>
+          <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📊 使用中のタグ（{tagMap.size}種）</div>
+          {tagMap.size===0?(
+            <div style={{textAlign:"center",color:G.sub,fontSize:12,padding:"8px 0"}}>タグがありません</div>
+          ):(
+            [...tagMap.entries()].map(([tag,count])=>(
+              <div key={tag} style={{marginBottom:6}}>
+                {editingTag===tag?(
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input value={editValue} onChange={e=>setEditValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameTag(tag,editValue);if(e.key==="Escape")setEditingTag(null);}} autoFocus style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid "+G.accent,background:G.dark,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
+                    <button onClick={()=>renameTag(tag,editValue)} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>変更</button>
+                    <button onClick={()=>setEditingTag(null)} style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:12,cursor:"pointer"}}>✕</button>
                   </div>
-                  <button onClick={()=>{setEditingTag(tag);setEditValue(tag);}} style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid "+G.border,background:G.card,color:G.sub,fontSize:12,cursor:"pointer"}}>編集</button>
-                  <button onClick={()=>setConfirmDelete(tag)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:12,cursor:"pointer",fontWeight:700}}>削除</button>
-                </div>
-              )}
+                ):(
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
+                      <Tag label={tag}/>
+                      <span style={{fontSize:10,color:G.sub}}>{count}品</span>
+                    </div>
+                    <button onClick={()=>{setEditingTag(tag);setEditValue(tag);}} style={{padding:"4px 10px",borderRadius:7,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:11,cursor:"pointer"}}>編集</button>
+                    <button onClick={()=>setConfirmDelete(tag)} style={{padding:"4px 10px",borderRadius:7,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:11,cursor:"pointer",fontWeight:700}}>削除</button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* カテゴリ管理 */}
+        <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📂 カテゴリ管理（タグ候補の編集）</div>
+        {tagCats.map((cat,ci)=>(
+          <div key={ci} style={{marginBottom:8,border:"1.5px solid "+G.border,borderRadius:12,overflow:"hidden"}}>
+            <div style={{display:"flex",alignItems:"center",background:G.input}}>
+              <button onClick={()=>setOpen(p=>({...p,[ci]:!p[ci]}))} style={{flex:1,padding:"10px 14px",border:"none",background:"transparent",color:G.text,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"left"}}>
+                {editingCat===ci?(
+                  <input value={editCatValue} onChange={e=>setEditCatValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameCat(ci,editCatValue);if(e.key==="Escape")setEditingCat(null);}} onClick={e=>e.stopPropagation()} autoFocus style={{padding:"3px 8px",borderRadius:6,border:"1.5px solid "+G.accent,background:G.dark,color:G.text,fontSize:13,WebkitAppearance:"none",width:"80%"}}/>
+                ):(
+                  cat.label
+                )}
+              </button>
+              <div style={{display:"flex",gap:4,padding:"0 10px"}}>
+                {editingCat===ci?(
+                  <>
+                    <button onClick={()=>renameCat(ci,editCatValue)} style={{padding:"4px 8px",borderRadius:6,border:"none",background:G.accent,color:"#fff",fontSize:11,cursor:"pointer"}}>保存</button>
+                    <button onClick={()=>setEditingCat(null)} style={{padding:"4px 8px",borderRadius:6,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:11,cursor:"pointer"}}>✕</button>
+                  </>
+                ):(
+                  <>
+                    <button onClick={()=>{setEditingCat(ci);setEditCatValue(cat.label);}} style={{padding:"4px 8px",borderRadius:6,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:11,cursor:"pointer"}}>✏️</button>
+                    <button onClick={()=>deleteCat(ci)} style={{padding:"4px 8px",borderRadius:6,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:11,cursor:"pointer"}}>🗑</button>
+                  </>
+                )}
+                <span style={{color:G.sub,fontSize:13,padding:"4px 2px"}}>{open[ci]?"▲":"▼"}</span>
+              </div>
             </div>
-          ))
-        )}
-        {toast&&<div style={{marginTop:16,padding:"10px 14px",borderRadius:12,background:G.accent+"22",color:G.accent,fontSize:13,fontWeight:700,textAlign:"center"}}>{toast}</div>}
+            {open[ci]&&(
+              <div style={{padding:"10px 12px",background:"#ffffff05"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+                  {cat.tags.map((t,ti)=>(
+                    <span key={ti} style={{display:"inline-flex",alignItems:"center",gap:3,background:tagColor(t)+"22",border:"1.5px solid "+tagColor(t),borderRadius:20,padding:"3px 6px 3px 10px"}}>
+                      <span style={{fontSize:11,fontWeight:700,color:tagColor(t)}}>{t}</span>
+                      <span onClick={()=>removeTagFromCat(ci,ti)} style={{fontSize:10,color:G.sub,cursor:"pointer",padding:"0 2px"}}>✕</span>
+                    </span>
+                  ))}
+                </div>
+                {addingToCat===ci?(
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={newCatTag} onChange={e=>setNewCatTag(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addTagToCat(ci,newCatTag);if(e.key==="Escape")setAddingToCat(null);}} autoFocus placeholder="新しいタグ名..." style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid "+G.accent,background:G.dark,color:G.text,fontSize:12,WebkitAppearance:"none"}}/>
+                    <button onClick={()=>addTagToCat(ci,newCatTag)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:G.accent,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:700}}>追加</button>
+                    <button onClick={()=>setAddingToCat(null)} style={{padding:"6px 10px",borderRadius:8,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:12,cursor:"pointer"}}>✕</button>
+                  </div>
+                ):(
+                  <button onClick={()=>{setAddingToCat(ci);setNewCatTag("");}} style={{padding:"5px 12px",borderRadius:8,border:"1.5px dashed "+G.border,background:"transparent",color:G.sub,fontSize:11,cursor:"pointer"}}>＋ タグを追加</button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        <button onClick={addNewCat} style={{width:"100%",padding:"10px",borderRadius:12,border:"1.5px dashed "+G.blue+"66",background:G.blue+"11",color:G.blue,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:4}}>＋ 新しいカテゴリを追加</button>
+        {toast&&<div style={{marginTop:14,padding:"10px 14px",borderRadius:12,background:G.accent+"22",color:G.accent,fontSize:13,fontWeight:700,textAlign:"center"}}>{toast}</div>}
       </div>
     </div>
   );
@@ -400,7 +568,7 @@ function ImportBanner({recipe,onImport,onDismiss}){
 }
 function NutritionPanel({recipe,onUpdate}){
   const [loading,setLoading]=useState(false);
-  const estimate=async()=>{setLoading(true);try{const n=await estimateNutrition(recipe);onUpdate({...recipe,nutrition:n});}catch(e){alert(e.message);}finally{setLoading(false);}};
+  const estimate=async()=>{setLoading(true);try{const n=await estimateNutrition(recipe);onUpdate({...recipe,nutrition:n,updatedAt:new Date().toISOString()});}catch(e){alert(e.message);}finally{setLoading(false);}};
   if(!recipe.ingredients?.length)return null;
   if(loading)return <div style={{padding:"12px 0"}}><Loader msg="栄養素を推定中..."/></div>;
   if(!recipe.nutrition)return(
@@ -483,17 +651,17 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
 
   const startEdit=()=>{setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""]});setEditing(true);};
   const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});setEditing(false);};
-  const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP")});
-  const handleHeroPhoto=async(f)=>{if(!f)return;try{const url=await compressAndUpload(f,"hero/"+recipe.id);onUpdate({...recipe,photo:url});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
-  const handleStepPhoto=async(f,i)=>{if(!f)return;try{const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);const sp={...(recipe.stepPhotos||{})};sp[i]=url;onUpdate({...recipe,stepPhotos:sp});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
+  const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString()});
+  const handleHeroPhoto=async(f)=>{if(!f)return;try{const url=await compressAndUpload(f,"hero/"+recipe.id);onUpdate({...recipe,photo:url,updatedAt:new Date().toISOString()});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
+  const handleStepPhoto=async(f,i)=>{if(!f)return;try{const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);const sp={...(recipe.stepPhotos||{})};sp[i]=url;onUpdate({...recipe,stepPhotos:sp,updatedAt:new Date().toISOString()});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
   const handleCommentPhoto=async(f)=>{if(!f)return;setPhotoLoading(true);try{const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());setCommentPhoto(url);}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}finally{setPhotoLoading(false);}};
-  const submitComment=()=>{if(!commentText.trim()&&!commentPhoto)return;onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}]});setCommentText("");setCommentPhoto(null);};
+  const submitComment=()=>{if(!commentText.trim()&&!commentPhoto)return;onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}],updatedAt:new Date().toISOString()});setCommentText("");setCommentPhoto(null);};
   const inS={padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000d",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      {showTagEditor&&<TagEditor tags={editing?editData.tags:recipe.tags||[]} onSave={tags=>{if(editing)setEditData(d=>({...d,tags}));else onUpdate({...recipe,tags});setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
-      {confirmDelComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDelComment)});setConfirmDelComment(null);}} onCancel={()=>setConfirmDelComment(null)}/>}
+      {showTagEditor&&<TagEditor tags={editing?editData.tags:recipe.tags||[]} onSave={tags=>{if(editing)setEditData(d=>({...d,tags}));else onUpdate({...recipe,tags,updatedAt:new Date().toISOString()});setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
+      {confirmDelComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDelComment),updatedAt:new Date().toISOString()});setConfirmDelComment(null);}} onCancel={()=>setConfirmDelComment(null)}/>}
       {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={async()=>{await deleteStoragePhotos(extractStoragePaths(recipe));onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
       {showShare&&<ShareModal recipe={recipe} onClose={()=>setShowShare(false)}/>}
       {showShopping&&<ShoppingList recipe={recipe} onClose={()=>setShowShopping(false)}/>}
@@ -562,7 +730,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                           <img src={recipe.stepPhotos[i]} style={{width:"100%",borderRadius:10,maxHeight:160,objectFit:"cover"}}/>
                           <div style={{position:"absolute",bottom:6,right:6,display:"flex",gap:4}}>
                             <button onClick={()=>stepRefs.current[i]?.click()} style={{background:"#000a",border:"1px solid #fff4",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>📷 変更</button>
-                            <button onClick={()=>{const sp={...(recipe.stepPhotos||{})};delete sp[i];onUpdate({...recipe,stepPhotos:sp});}} style={{background:"#e85a5a88",border:"none",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>削除</button>
+                            <button onClick={()=>{const sp={...(recipe.stepPhotos||{})};delete sp[i];onUpdate({...recipe,stepPhotos:sp,updatedAt:new Date().toISOString()});}} style={{background:"#e85a5a88",border:"none",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>削除</button>
                           </div>
                         </div>
                       ):(
@@ -776,7 +944,7 @@ function AddScreen({onBack,onAdd,userName}){
   if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
   const process=async({imageFile,text})=>{
     setLoading(true);setLoadingMsg(imageFile?"🤖 解析中...":"🔍 取得中...");
-    try{const data=await extractRecipe({imageFile,text});onAdd({...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)});}
+    try{const data=await extractRecipe({imageFile,text});onAdd({...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],updatedAt:new Date().toISOString(),sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)});}
     catch(e){setLoading(false);setToast("❌ "+e.message);}
   };
   return(
@@ -869,7 +1037,11 @@ export default function App(){
     remote.forEach(r=>{
       const ex=map.get(r.id);
       if(!ex)map.set(r.id,r);
-      else{const lu=ex.updatedAt||ex.addedAt||"";const ru=r.updatedAt||r.addedAt||"";if(ru>=lu)map.set(r.id,r);}
+      else{
+        const lu=ex.updatedAt||ex.addedAt||"";
+        const ru=r.updatedAt||r.addedAt||"";
+        if(ru>lu)map.set(r.id,r);
+      }
     });
     return Array.from(map.values());
   };
@@ -908,25 +1080,46 @@ export default function App(){
   };
 
   const persistHistory=(h)=>{setHistory(h);try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h));}catch{}};
-  const handleAdd=(recipe)=>{const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP")};persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");};
-  const handleDelete=async(id)=>{persist(recipes.filter(r=>r.id!==id));setToast("🗑 削除しました");};
-  const handleUpdate=(updated)=>{const l=recipes.map(r=>r.id===updated.id?updated:r);persist(l);setSelected(updated);};
-  const handleToggleFav=(id)=>{persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite}:r));};
+
+  const handleAdd=(recipe)=>{
+    const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP"),updatedAt:recipe.updatedAt||new Date().toISOString()};
+    persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");
+  };
+
+  // Tombstoneパターン：論理削除
+  const handleDelete=async(id)=>{
+    const recipe=recipes.find(r=>r.id===id);
+    if(recipe&&!recipe.deleted)await deleteStoragePhotos(extractStoragePaths(recipe));
+    const tombstone={id,deleted:true,updatedAt:new Date().toISOString()};
+    persist(recipes.map(r=>r.id===id?tombstone:r));
+    setToast("🗑 削除しました");
+  };
+
+  const handleUpdate=(updated)=>{
+    const l=recipes.map(r=>r.id===updated.id?updated:r);
+    persist(l);setSelected(updated);
+  };
+  const handleToggleFav=(id)=>{
+    persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite,updatedAt:new Date().toISOString()}:r));
+  };
   const handleUpdateAll=(updatedRecipes)=>{persist(updatedRecipes);};
   const handleCopy=(recipe)=>{
-    const copied={...recipe,id:Date.now(),title:recipe.title+" (コピー)",addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],madeCount:0,lastMade:null,favorite:false,photo:null,stepPhotos:{}};
+    const copied={...recipe,id:Date.now(),title:recipe.title+" (コピー)",addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],madeCount:0,lastMade:null,favorite:false,photo:null,stepPhotos:{}};
     persist([copied,...recipes]);setToast("📋 コピーしました");setView("home");setSelected(null);
   };
   const handleView=(recipe)=>{
     setSelected(recipe);setView("detail");
     const newR={id:recipe.id,title:recipe.title,emoji:recipe.emoji,viewedAt:Date.now()};
     persistHistory([newR,...history.filter(x=>x.id!==recipe.id)].slice(0,20));
-    persist(recipes.map(r=>r.id===recipe.id?{...r,viewCount:(r.viewCount||0)+1}:r));
+    persist(recipes.map(r=>r.id===recipe.id?{...r,viewCount:(r.viewCount||0)+1,updatedAt:new Date().toISOString()}:r));
   };
+
+  // 論理削除を除外したアクティブレシピ
+  const activeRecipes=useMemo(()=>recipes.filter(r=>!r.deleted),[recipes]);
 
   const SORT_OPTS=[{id:"date",label:"追加日"},{id:"views",label:"よく見る"},{id:"made",label:"作った回数"},{id:"az",label:"あいうえお"}];
   const sorted=useMemo(()=>{
-    let arr=[...recipes];
+    let arr=[...activeRecipes];
     if(filterFav)arr=arr.filter(r=>r.favorite);
     if(activeTag)arr=arr.filter(r=>(r.tags||[]).includes(activeTag));
     if(search)arr=arr.filter(r=>r.title?.includes(search)||(r.tags||[]).some(t=>t.includes(search)));
@@ -937,9 +1130,9 @@ export default function App(){
       default:arr.sort((a,b)=>(b.id||0)-(a.id||0));
     }
     return arr;
-  },[recipes,filterFav,activeTag,search,sortBy]);
+  },[activeRecipes,filterFav,activeTag,search,sortBy]);
 
-  const allTags=[...new Set(recipes.flatMap(r=>r.tags||[]))];
+  const allTags=[...new Set(activeRecipes.flatMap(r=>r.tags||[]))];
   const syncIcon=syncStatus==="syncing"?"⏳":syncStatus==="ok"?"✅":syncStatus==="error"?"❌":"🔄";
 
   if(!authed)return(
@@ -985,15 +1178,19 @@ export default function App(){
               <button onClick={()=>setShowHistory(false)} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
             </div>
             {history.length===0?<div style={{textAlign:"center",color:G.sub,padding:"20px 0"}}>履歴がありません</div>:
-              history.map(h=>{const r=recipes.find(x=>x.id===h.id);if(!r)return null;return(
-                <div key={h.id} onClick={()=>{handleView(r);setShowHistory(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px",borderRadius:12,cursor:"pointer",marginBottom:4,background:G.input}}>
-                  <div style={{fontSize:28,width:36,textAlign:"center"}}>{r.emoji||"🍽️"}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:700,color:G.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</div>
-                    <div style={{fontSize:11,color:G.sub}}>{new Date(h.viewedAt).toLocaleDateString("ja-JP")}</div>
+              history.map(h=>{
+                const r=activeRecipes.find(x=>x.id===h.id);if(!r)return null;
+                return(
+                  <div key={h.id} onClick={()=>{handleView(r);setShowHistory(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px",borderRadius:12,cursor:"pointer",marginBottom:4,background:G.input}}>
+                    <div style={{fontSize:28,width:36,textAlign:"center"}}>{r.emoji||"🍽️"}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:700,color:G.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</div>
+                      <div style={{fontSize:11,color:G.sub}}>{new Date(h.viewedAt).toLocaleDateString("ja-JP")}</div>
+                    </div>
                   </div>
-                </div>
-              );})}
+                );
+              })
+            }
           </div>
         </div>
       )}
@@ -1004,7 +1201,7 @@ export default function App(){
             <div>
               <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:19,fontWeight:900,letterSpacing:1,background:"linear-gradient(135deg,#e8825a,#c85a8a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>🍳 レシピノート</div>
               <div style={{color:G.sub,fontSize:10,marginTop:1,display:"flex",alignItems:"center",gap:6}}>
-                <span>{userName} • {recipes.length}品</span>
+                <span>{userName} • {activeRecipes.length}品</span>
                 {members.length>1&&<span style={{color:G.blue}}>{"👥 "+members.join("・")}</span>}
                 <span style={{fontSize:11}}>{syncIcon}</span>
               </div>
@@ -1052,7 +1249,7 @@ export default function App(){
         )}
       </div>
 
-      {view==="detail"&&selected&&<RecipeDetail recipe={selected} onClose={()=>{setView("home");setSelected(null);}} onUpdate={handleUpdate} userName={userName} onDelete={(id)=>{handleDelete(id);setView("home");setSelected(null);}} onCopy={handleCopy}/>}
+      {view==="detail"&&selected&&!selected.deleted&&<RecipeDetail recipe={selected} onClose={()=>{setView("home");setSelected(null);}} onUpdate={handleUpdate} userName={userName} onDelete={(id)=>{handleDelete(id);setView("home");setSelected(null);}} onCopy={handleCopy}/>}
       <Toast msg={toast} onClear={()=>setToast("")}/>
     </div>
   );
