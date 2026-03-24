@@ -27,7 +27,8 @@ export default async function handler(req, res) {
       { role: "system", content: RECIPE_SYSTEM },
       { role: "user", content: imageBase64
         ? [
-            { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}`, detail: "low" } },
+            // 【修正】 detail: "low" を削除し、AIが文字をしっかり読める解像度（auto/high）に変更
+            { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } },
             { type: "text", text: prompt }
           ]
         : prompt
@@ -48,3 +49,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message });
   }
 }
+
