@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 
 const STORAGE_KEY = "recipe-note-v2";
 const HISTORY_KEY = "recipe-history";
-const ROOM_KEY = "recipe-note-room";
 
 const G = {
   dark:"#0a0a12", card:"#13132a", input:"#1a1a30", border:"#2a2a45",
@@ -37,6 +36,50 @@ function parseJSONRobust(text){
 async function readFile(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("失敗"));r.readAsDataURL(file);});
 }
+
+async function compressAndUpload(file, pathPrefix){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = async ()=>{
+      URL.revokeObjectURL(url);
+      try{
+        const MAX = 1200;
+        let w = img.width, h = img.height;
+        if(w > MAX || h > MAX){
+          if(w > h){h = Math.round(h * MAX / w); w = MAX;}
+          else{w = Math.round(w * MAX / h); h = MAX;}
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(async (blob)=>{
+          try{
+            const reader = new FileReader();
+            reader.onload = async ()=>{
+              const base64 = reader.result.split(",")[1];
+              const path = pathPrefix + "_" + Date.now() + ".jpg";
+              const res = await fetch("/api/upload",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({base64, mediaType:"image/jpeg", path}),
+              });
+              if(!res.ok) throw new Error("アップロード失敗");
+              const data = await res.json();
+              resolve(data.url);
+            };
+            reader.onerror = ()=>reject(new Error("読み込み失敗"));
+            reader.readAsDataURL(blob);
+          }catch(e){reject(e);}
+        }, "image/jpeg", 0.75);
+      }catch(e){reject(e);}
+    };
+    img.onerror = ()=>reject(new Error("画像読み込み失敗"));
+    img.src = url;
+  });
+}
+
 async function extractRecipe({imageFile,text}){
   let imageBase64=null,imageMediaType=null;
   if(imageFile){
@@ -51,7 +94,6 @@ async function extractRecipe({imageFile,text}){
   if(!parsed)throw new Error("解析失敗。別の画像やURLをお試しください。");
   return parsed;
 }
-
 async function estimateNutrition(recipe){
   const prompt="以下のレシピの1人分の栄養素を推定してください。JSON形式のみで返答してください。\nフォーマット: {\"calories\":数字,\"protein\":数字,\"fat\":数字,\"carbs\":数字,\"fiber\":数字}\n単位はkcalとgです。\n\nレシピ: "+recipe.title+"\n材料: "+(recipe.ingredients||[]).map(i=>i.name+" "+i.amount).join(", ")+"\n人数: "+(recipe.servings||"2人分");
   const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imageBase64:null,imageMediaType:null})});
@@ -71,14 +113,11 @@ async function exportImage(recipe){
   const stepH=(recipe.steps||[]).reduce((a,s)=>a+Math.max(1,Math.ceil(s.length/30))*22+10,0)+60;
   const nutH=recipe.nutrition?120:0;
   const H=Math.min(300+ingH+stepH+nutH,2400);
-  const canvas=document.createElement("canvas");
-  canvas.width=W;canvas.height=H;
+  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext("2d");
-  const bg=ctx.createLinearGradient(0,0,0,H);
-  bg.addColorStop(0,"#13132a");bg.addColorStop(1,"#1e1a2e");
+  const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,"#13132a");bg.addColorStop(1,"#1e1a2e");
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-  const bar=ctx.createLinearGradient(0,0,W,0);
-  bar.addColorStop(0,"#e8825a");bar.addColorStop(1,"#c85a8a");
+  const bar=ctx.createLinearGradient(0,0,W,0);bar.addColorStop(0,"#e8825a");bar.addColorStop(1,"#c85a8a");
   ctx.fillStyle=bar;ctx.fillRect(0,0,W,6);
   let y=70;
   ctx.font="54px serif";ctx.fillText(recipe.emoji||"🍽️",pad,y);
@@ -144,19 +183,14 @@ function parseShareParam(){
   try{return JSON.parse(decodeURIComponent(escape(atob(s))));}catch{return null;}
 }
 
-async function syncRoom(code,localRecipes,userName){
-  const res=await fetch("/api/room",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,recipes:localRecipes,member:userName})});
+async function doSync(localRecipes,userName){
+  const res=await fetch("/api/room",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipes:localRecipes,member:userName})});
   if(!res.ok)throw new Error("同期失敗");
   return res.json();
 }
-async function createRoom(userName){
-  const res=await fetch("/api/room",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({member:userName})});
-  if(!res.ok)throw new Error("ルーム作成失敗");
-  return res.json();
-}
-async function joinRoom(code,userName){
-  const res=await fetch("/api/room?code="+code+"&member="+encodeURIComponent(userName));
-  if(!res.ok)throw new Error("ルームが見つかりません");
+async function fetchRemote(userName){
+  const res=await fetch("/api/room?member="+encodeURIComponent(userName));
+  if(!res.ok)throw new Error("取得失敗");
   return res.json();
 }
 
@@ -183,13 +217,11 @@ function ConfirmDialog({msg,onOk,onCancel}){
     </div>
   );
 }
-
 function Toast({msg,onClear}){
   useEffect(()=>{if(!msg)return;const t=setTimeout(onClear,3000);return()=>clearTimeout(t);},[msg]);
   if(!msg)return null;
   return <div style={{position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",padding:"12px 26px",borderRadius:30,fontSize:14,fontWeight:700,boxShadow:"0 8px 32px #e8825a44",zIndex:9999,whiteSpace:"nowrap",maxWidth:"90vw"}}>{msg}</div>;
 }
-
 function Loader({msg}){
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"36px 0"}}>
@@ -199,7 +231,6 @@ function Loader({msg}){
     </div>
   );
 }
-
 function Tag({label,active,onClick,onRemove}){
   const c=tagColor(label);
   return(
@@ -209,7 +240,6 @@ function Tag({label,active,onClick,onRemove}){
     </span>
   );
 }
-
 function TagEditor({tags,onSave,onClose}){
   const [cur,setCur]=useState([...tags]);
   const [custom,setCustom]=useState("");
@@ -241,7 +271,6 @@ function TagEditor({tags,onSave,onClose}){
     </div>
   );
 }
-
 function ShareModal({recipe,onClose}){
   const [copied,setCopied]=useState(false);
   const url=encodeShareURL(recipe);
@@ -263,58 +292,6 @@ function ShareModal({recipe,onClose}){
     </div>
   );
 }
-
-function RoomModal({room,userName,onCreateRoom,onJoinRoom,onLeaveRoom,onSync,syncStatus,lastSync,onClose}){
-  const [tab,setTab]=useState(room?"status":"create");
-  const [code,setCode]=useState("");
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"22px 22px 44px",border:"2px solid "+G.blue+"44"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontWeight:700,color:G.text,fontSize:17}}>👥 2人で共有</div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
-        </div>
-        {room?(
-          <div>
-            <div style={{background:G.input,borderRadius:14,padding:"16px",marginBottom:14,border:"1.5px solid "+G.blue+"44",textAlign:"center"}}>
-              <div style={{fontSize:12,color:G.sub,marginBottom:6}}>ルームコード（パートナーに共有）</div>
-              <div style={{fontSize:36,fontWeight:900,color:G.blue,letterSpacing:8}}>{room.code}</div>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:G.sub,marginBottom:14}}>
-              <span>{syncStatus==="syncing"?"⏳ 同期中...":syncStatus==="ok"?"✅ 同期済み":syncStatus==="error"?"❌ 失敗":""}</span>
-              {lastSync&&<span>{"最終: "+new Date(lastSync).toLocaleTimeString("ja-JP")}</span>}
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={onSync} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#5a9ee8,#3a7ec8)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>🔄 今すぐ同期</button>
-              <button onClick={onLeaveRoom} style={{flex:1,padding:"12px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:13}}>退出</button>
-            </div>
-          </div>
-        ):(
-          <div>
-            <div style={{display:"flex",background:G.input,borderRadius:12,padding:4,marginBottom:18,gap:3}}>
-              {[{id:"create",label:"新規作成"},{id:"join",label:"参加する"}].map(t=>(
-                <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"9px",borderRadius:10,border:"none",background:tab===t.id?"linear-gradient(135deg,#5a9ee8,#3a7ec8)":"transparent",color:tab===t.id?"#fff":G.sub,fontWeight:tab===t.id?700:400,cursor:"pointer",fontSize:13}}>{t.label}</button>
-              ))}
-            </div>
-            {tab==="create"?(
-              <div>
-                <div style={{fontSize:13,color:G.sub,lineHeight:1.8,marginBottom:18}}>新しいルームを作成すると6桁のコードが発行されます。パートナーにコードを伝えて「参加する」で入室できます。</div>
-                <button onClick={onCreateRoom} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#5a9ee8,#3a7ec8)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px #5a9ee844"}}>🚀 ルームを作成する</button>
-              </div>
-            ):(
-              <div>
-                <div style={{fontSize:13,color:G.sub,marginBottom:12}}>パートナーのルームコード（6桁）を入力</div>
-                <input value={code} onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))} placeholder="XXXXXX" style={{width:"100%",padding:"14px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:28,letterSpacing:8,textAlign:"center",WebkitAppearance:"none",marginBottom:12,display:"block"}}/>
-                <button onClick={()=>code.length===6&&onJoinRoom(code)} disabled={code.length!==6} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:code.length===6?"linear-gradient(135deg,#5a9ee8,#3a7ec8)":G.input,color:code.length===6?"#fff":G.sub,fontSize:15,fontWeight:700,cursor:code.length===6?"pointer":"default"}}>参加する</button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ImportBanner({recipe,onImport,onDismiss}){
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,background:"linear-gradient(135deg,#1e1a2e,#13132a)",borderBottom:"2px solid "+G.accent,padding:"14px 18px",zIndex:500,display:"flex",alignItems:"center",gap:10}}>
@@ -327,15 +304,9 @@ function ImportBanner({recipe,onImport,onDismiss}){
     </div>
   );
 }
-
 function NutritionPanel({recipe,onUpdate}){
   const [loading,setLoading]=useState(false);
-  const estimate=async()=>{
-    setLoading(true);
-    try{const n=await estimateNutrition(recipe);onUpdate({...recipe,nutrition:n});}
-    catch(e){alert(e.message);}
-    finally{setLoading(false);}
-  };
+  const estimate=async()=>{setLoading(true);try{const n=await estimateNutrition(recipe);onUpdate({...recipe,nutrition:n});}catch(e){alert(e.message);}finally{setLoading(false);}};
   if(!recipe.ingredients?.length)return null;
   if(loading)return <div style={{padding:"12px 0"}}><Loader msg="栄養素を推定中..."/></div>;
   if(!recipe.nutrition)return(
@@ -360,8 +331,7 @@ function NutritionPanel({recipe,onUpdate}){
     </div>
   );
 }
-
-function RecipeCard({recipe,onClick,onDelete,onToggleFav,roomMember}){
+function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
   const [hov,setHov]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const c1=tagColor(recipe.title||"a"),c2=tagColor((recipe.tags||["b"])[0]||"b");
@@ -382,7 +352,7 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,roomMember}){
             <button onClick={e=>{e.stopPropagation();onToggleFav(recipe.id);}} style={{background:"#000a",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{recipe.favorite?"⭐":"☆"}</button>
             {onDelete&&<button onClick={e=>{e.stopPropagation();setConfirmDelete(true);}} style={{background:"#000a",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",color:"#ccc",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
           </div>
-          {roomMember&&recipe.addedBy&&recipe.addedBy!==roomMember&&<span style={{position:"absolute",bottom:6,left:8,background:"#5a9ee888",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:9,fontWeight:700}}>{"👤 "+recipe.addedBy}</span>}
+          {recipe.addedBy&&recipe.addedBy!==userName&&<span style={{position:"absolute",bottom:6,left:8,background:"#5a9ee888",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:9,fontWeight:700}}>{"👤 "+recipe.addedBy}</span>}
         </div>
         <div style={{padding:"10px 12px 12px"}}>
           <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:14,fontWeight:700,color:G.text,marginBottom:2,lineHeight:1.35}}>{recipe.title}</div>
@@ -397,7 +367,6 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,roomMember}){
     </>
   );
 }
-
 function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
   const [tab,setTab]=useState("recipe");
   const [editing,setEditing]=useState(false);
@@ -415,24 +384,36 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
   const c1=tagColor(recipe.title||"a");
   const photoRef=useRef(),heroRef=useRef(),stepRefs=useRef([]);
 
-  const startEdit=()=>{
-    setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""]});
-    setEditing(true);
-  };
-  const saveEdit=()=>{
-    if(!editData.title.trim())return;
-    onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});
-    setEditing(false);
-  };
+  const startEdit=()=>{setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""]});setEditing(true);};
+  const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});setEditing(false);};
   const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP")});
-  const handleHeroPhoto=async(f)=>{if(!f)return;const d=await readFile(f);onUpdate({...recipe,photo:d});};
-  const handleStepPhoto=async(f,i)=>{if(!f)return;const d=await readFile(f);const sp={...(recipe.stepPhotos||{})};sp[i]=d;onUpdate({...recipe,stepPhotos:sp});};
-  const handleCommentPhoto=async(f)=>{if(!f)return;setPhotoLoading(true);try{setCommentPhoto(await readFile(f));}catch(e){alert(e.message);}finally{setPhotoLoading(false);}};
-  const submitComment=()=>{
-    if(!commentText.trim()&&!commentPhoto)return;
-    onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}]});
-    setCommentText("");setCommentPhoto(null);
+
+  const handleHeroPhoto=async(f)=>{
+    if(!f)return;
+    try{
+      const url=await compressAndUpload(f,"hero/"+recipe.id);
+      onUpdate({...recipe,photo:url});
+    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
   };
+  const handleStepPhoto=async(f,i)=>{
+    if(!f)return;
+    try{
+      const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);
+      const sp={...(recipe.stepPhotos||{})};sp[i]=url;
+      onUpdate({...recipe,stepPhotos:sp});
+    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
+  };
+  const handleCommentPhoto=async(f)=>{
+    if(!f)return;
+    setPhotoLoading(true);
+    try{
+      const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());
+      setCommentPhoto(url);
+    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
+    finally{setPhotoLoading(false);}
+  };
+
+  const submitComment=()=>{if(!commentText.trim()&&!commentPhoto)return;onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}]});setCommentText("");setCommentPhoto(null);};
   const inS={padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
   return(
@@ -441,7 +422,6 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
       {confirmDelComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDelComment)});setConfirmDelComment(null);}} onCancel={()=>setConfirmDelComment(null)}/>}
       {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={()=>{onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
       {showShare&&<ShareModal recipe={recipe} onClose={()=>setShowShare(false)}/>}
-
       <div onClick={e=>e.stopPropagation()} style={{background:G.dark,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 30px 80px #000c",border:"2px solid "+c1+"55"}}>
         <div style={{height:150,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:82,borderRadius:"22px 22px 0 0",position:"relative"}}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
@@ -456,7 +436,6 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
             <button onClick={startEdit} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>✏️ 編集</button>
           </div>
         </div>
-
         <div style={{padding:"18px 20px 30px"}}>
           {editing?(
             <div>
@@ -562,9 +541,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
                 <div>
                   {recipe.ingredients?.length>0&&(
                     <div style={{marginBottom:20}}>
-                      <div style={{fontWeight:700,color:G.accent,fontSize:13,marginBottom:10}}>
-                        🥘 材料{scale!==1&&<span style={{fontWeight:400,fontSize:11,marginLeft:8}}>（×{scale.toFixed(1)} 換算）</span>}
-                      </div>
+                      <div style={{fontWeight:700,color:G.accent,fontSize:13,marginBottom:10}}>🥘 材料{scale!==1&&<span style={{fontWeight:400,fontSize:11,marginLeft:8}}>（×{scale.toFixed(1)} 換算）</span>}</div>
                       <div style={{background:G.card,borderRadius:14,padding:"6px 14px",border:"1.5px solid "+G.accent+"33"}}>
                         {recipe.ingredients.map((ing,i)=>(
                           <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<recipe.ingredients.length-1?"1px solid "+G.border+"66":"none",fontSize:13}}>
@@ -619,7 +596,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
                   <div style={{background:G.card,borderRadius:16,padding:14,border:"1.5px solid "+G.border}}>
                     <div style={{fontSize:12,fontWeight:700,color:G.accent,marginBottom:10}}>▸ 記録を追加</div>
                     <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="感想・アレンジ・メモなど..." rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,resize:"none",boxSizing:"border-box",lineHeight:1.6,marginBottom:10,display:"block",WebkitAppearance:"none"}}/>
-                    {photoLoading&&<div style={{color:G.accent,fontSize:12,marginBottom:8,textAlign:"center"}}>読み込み中...</div>}
+                    {photoLoading&&<div style={{color:G.accent,fontSize:12,marginBottom:8,textAlign:"center"}}>アップロード中...</div>}
                     {commentPhoto&&!photoLoading&&(
                       <div style={{position:"relative",marginBottom:10}}>
                         <img src={commentPhoto} style={{width:"100%",borderRadius:10,maxHeight:180,objectFit:"cover"}}/>
@@ -641,7 +618,6 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
     </div>
   );
 }
-
 function ManualForm({onAdd,onBack}){
   const [title,setTitle]=useState(""),[description,setDescription]=useState(""),
     [emoji,setEmoji]=useState("🍳"),[time,setTime]=useState(""),
@@ -650,10 +626,7 @@ function ManualForm({onAdd,onBack}){
     [steps,setSteps]=useState([""]),[showTagEditor,setShowTagEditor]=useState(false),
     [toast,setToast]=useState("");
   const inS={padding:"11px 14px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:14,display:"block",width:"100%",marginBottom:10,WebkitAppearance:"none",appearance:"none"};
-  const submit=()=>{
-    if(!title.trim()){setToast("⚠️ 料理名を入力してください");return;}
-    onAdd({title:title.trim(),description:description.trim(),emoji,time:time.trim()||null,servings:servings?servings+"人分":null,source:source.trim()||"自作",sourceUrl:null,tags,ingredients:ingredients.filter(i=>i.name.trim()),steps:steps.filter(s=>s.trim()),comments:[]});
-  };
+  const submit=()=>{if(!title.trim()){setToast("⚠️ 料理名を入力してください");return;}onAdd({title:title.trim(),description:description.trim(),emoji,time:time.trim()||null,servings:servings?servings+"人分":null,source:source.trim()||"自作",sourceUrl:null,tags,ingredients:ingredients.filter(i=>i.name.trim()),steps:steps.filter(s=>s.trim()),comments:[]});};
   return(
     <div style={{minHeight:"100vh",background:G.dark,padding:24}}>
       <style>{CSS}</style>
@@ -708,7 +681,6 @@ function ManualForm({onAdd,onBack}){
     </div>
   );
 }
-
 function AddScreen({onBack,onAdd,userName}){
   const [mode,setMode]=useState("image");
   const [textInput,setTextInput]=useState("");
@@ -759,7 +731,6 @@ function AddScreen({onBack,onAdd,userName}){
     </div>
   );
 }
-
 export default function App(){
   const [userName,setUserName]=useState("");
   const [nameInput,setNameInput]=useState("");
@@ -775,29 +746,25 @@ export default function App(){
   const [history,setHistory]=useState([]);
   const [toast,setToast]=useState("");
   const [sharedRecipe,setSharedRecipe]=useState(null);
-  const [room,setRoom]=useState(null);
   const [syncStatus,setSyncStatus]=useState("");
   const [lastSync,setLastSync]=useState(null);
-  const [showRoom,setShowRoom]=useState(false);
+  const [members,setMembers]=useState([]);
 
   useEffect(()=>{
     try{
-      const saved=localStorage.getItem(STORAGE_KEY);if(saved)setRecipes(JSON.parse(saved));
-      const n=localStorage.getItem("rs-name");if(n)setUserName(n);
       const h=localStorage.getItem(HISTORY_KEY);if(h)setHistory(JSON.parse(h));
-      const r=localStorage.getItem(ROOM_KEY);if(r)setRoom(JSON.parse(r));
+      const n=localStorage.getItem("rs-name");if(n)setUserName(n);
     }catch{}
     const sr=parseShareParam();if(sr)setSharedRecipe(sr);
   },[]);
 
-  useEffect(()=>{
-    if(!room||!userName)return;
-    const interval=setInterval(()=>doSync(false),30000);
-    return()=>clearInterval(interval);
-  },[room,userName]);
+  useEffect(()=>{if(!userName)return;initialSync();},[userName]);
 
-  const persist=(updated)=>{setRecipes(updated);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));}catch{}};
-  const persistHistory=(h)=>{setHistory(h);try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h));}catch{}};
+  useEffect(()=>{
+    if(!userName)return;
+    const interval=setInterval(()=>syncData(false),30000);
+    return()=>clearInterval(interval);
+  },[userName,recipes]);
 
   const mergeRecipes=(local,remote)=>{
     const map=new Map();
@@ -810,21 +777,47 @@ export default function App(){
     return Array.from(map.values());
   };
 
-  const doSync=async(manual=true)=>{
-    if(!room)return;
+  const initialSync=async()=>{
     setSyncStatus("syncing");
     try{
-      const result=await syncRoom(room.code,recipes,userName);
-      const merged=mergeRecipes(recipes,result.recipes||[]);
-      persist(merged);setSyncStatus("ok");setLastSync(Date.now());
-      if(manual)setToast("✅ 同期しました（"+merged.length+"品）");
-    }catch(e){setSyncStatus("error");if(manual)setToast("❌ "+e.message);}
+      const remote=await fetchRemote(userName);
+      const localSaved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
+      const merged=mergeRecipes(localSaved,remote.recipes||[]);
+      setRecipes(merged);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
+      setMembers(remote.members||[]);
+      await doSync(merged,userName);
+      setSyncStatus("ok");setLastSync(Date.now());
+    }catch(e){
+      try{const s=localStorage.getItem(STORAGE_KEY);if(s)setRecipes(JSON.parse(s));}catch{}
+      setSyncStatus("error");
+    }
   };
 
-  const handleAdd=(recipe)=>{
-    const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP")};
-    persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");
+  const syncData=async(manual=true)=>{
+    setSyncStatus("syncing");
+    try{
+      const result=await doSync(recipes,userName);
+      const merged=mergeRecipes(recipes,result.recipes||[]);
+      setRecipes(merged);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
+      setMembers(result.members||[]);
+      setSyncStatus("ok");setLastSync(Date.now());
+      if(manual)setToast("✅ 同期しました");
+    }catch(e){setSyncStatus("error");if(manual)setToast("❌ 同期失敗");}
   };
+
+  const persist=(updated)=>{
+    setRecipes(updated);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));
+    doSync(updated,userName).then(r=>{
+      if(r?.members)setMembers(r.members);
+      setSyncStatus("ok");setLastSync(Date.now());
+    }).catch(()=>setSyncStatus("error"));
+  };
+
+  const persistHistory=(h)=>{setHistory(h);try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h));}catch{}};
+  const handleAdd=(recipe)=>{const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP")};persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");};
   const handleDelete=(id)=>{persist(recipes.filter(r=>r.id!==id));setToast("🗑 削除しました");};
   const handleUpdate=(updated)=>{const l=recipes.map(r=>r.id===updated.id?updated:r);persist(l);setSelected(updated);};
   const handleToggleFav=(id)=>{persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite}:r));};
@@ -835,30 +828,7 @@ export default function App(){
     persist(recipes.map(r=>r.id===recipe.id?{...r,viewCount:(r.viewCount||0)+1}:r));
   };
 
-  const handleCreateRoom=async()=>{
-    try{
-      const r=await createRoom(userName);
-      const roomData={code:r.code};setRoom(roomData);localStorage.setItem(ROOM_KEY,JSON.stringify(roomData));
-      await syncRoom(r.code,recipes,userName);
-      setShowRoom(false);setToast("✅ ルーム作成: "+r.code);
-    }catch(e){setToast("❌ "+e.message);}
-  };
-  const handleJoinRoom=async(code)=>{
-    try{
-      const r=await joinRoom(code,userName);
-      const merged=mergeRecipes(recipes,r.recipes||[]);
-      persist(merged);
-      const roomData={code};setRoom(roomData);localStorage.setItem(ROOM_KEY,JSON.stringify(roomData));
-      setShowRoom(false);setToast("✅ ルームに参加しました（"+merged.length+"品）");
-    }catch(e){setToast("❌ "+e.message);}
-  };
-  const handleLeaveRoom=()=>{
-    setRoom(null);localStorage.removeItem(ROOM_KEY);setSyncStatus("");setLastSync(null);
-    setShowRoom(false);setToast("退出しました");
-  };
-
   const SORT_OPTS=[{id:"date",label:"追加日"},{id:"views",label:"よく見る"},{id:"made",label:"作った回数"},{id:"az",label:"あいうえお"}];
-
   const sorted=useMemo(()=>{
     let arr=[...recipes];
     if(filterFav)arr=arr.filter(r=>r.favorite);
@@ -874,6 +844,7 @@ export default function App(){
   },[recipes,filterFav,activeTag,search,sortBy]);
 
   const allTags=[...new Set(recipes.flatMap(r=>r.tags||[]))];
+  const syncIcon=syncStatus==="syncing"?"⏳":syncStatus==="ok"?"✅":syncStatus==="error"?"❌":"🔄";
 
   if(!userName)return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -881,7 +852,7 @@ export default function App(){
       <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:72,marginBottom:8}}>🍳</div>
         <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:28,fontWeight:900,marginBottom:6,background:"linear-gradient(135deg,#e8825a,#c85a8a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>レシピノート</div>
-        <div style={{color:G.sub,fontSize:13,marginBottom:32,lineHeight:1.9}}>SNS・スクショからレシピをまとめて<br/>2人で共有できるツール</div>
+        <div style={{color:G.sub,fontSize:13,marginBottom:32,lineHeight:1.9}}>2人で共有できるレシピ管理ツール</div>
         <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&nameInput.trim()){localStorage.setItem("rs-name",nameInput.trim());setUserName(nameInput.trim());}}} placeholder="あなたの名前を入力" style={{width:"100%",padding:"15px 16px",borderRadius:14,border:"2px solid "+G.border,background:G.card,color:G.text,fontSize:15,marginBottom:12,display:"block",WebkitAppearance:"none"}}/>
         <button onClick={()=>{if(nameInput.trim()){localStorage.setItem("rs-name",nameInput.trim());setUserName(nameInput.trim());}}} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",background:nameInput.trim()?"linear-gradient(135deg,#e8825a,#c8603a)":G.input,color:G.text,fontSize:15,fontWeight:700,cursor:nameInput.trim()?"pointer":"default",boxShadow:nameInput.trim()?"0 6px 20px #e8825a44":"none"}}>はじめる →</button>
       </div>
@@ -894,7 +865,6 @@ export default function App(){
     <div style={{minHeight:"100vh",background:G.dark}}>
       <style>{CSS}</style>
       {sharedRecipe&&<ImportBanner recipe={sharedRecipe} onImport={()=>{handleAdd({...sharedRecipe,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[]});setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}} onDismiss={()=>{setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}}/>}
-      {showRoom&&<RoomModal room={room} userName={userName} onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} onLeaveRoom={handleLeaveRoom} onSync={()=>doSync(true)} syncStatus={syncStatus} lastSync={lastSync} onClose={()=>setShowRoom(false)}/>}
 
       {showHistory&&(
         <div onClick={()=>setShowHistory(false)} style={{position:"fixed",inset:0,background:"#000c",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -904,19 +874,15 @@ export default function App(){
               <button onClick={()=>setShowHistory(false)} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
             </div>
             {history.length===0?<div style={{textAlign:"center",color:G.sub,padding:"20px 0"}}>履歴がありません</div>:
-              history.map(h=>{
-                const r=recipes.find(x=>x.id===h.id);if(!r)return null;
-                return(
-                  <div key={h.id} onClick={()=>{handleView(r);setShowHistory(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px",borderRadius:12,cursor:"pointer",marginBottom:4,background:G.input}}>
-                    <div style={{fontSize:28,width:36,textAlign:"center"}}>{r.emoji||"🍽️"}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:700,color:G.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</div>
-                      <div style={{fontSize:11,color:G.sub}}>{new Date(h.viewedAt).toLocaleDateString("ja-JP")}</div>
-                    </div>
+              history.map(h=>{const r=recipes.find(x=>x.id===h.id);if(!r)return null;return(
+                <div key={h.id} onClick={()=>{handleView(r);setShowHistory(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px",borderRadius:12,cursor:"pointer",marginBottom:4,background:G.input}}>
+                  <div style={{fontSize:28,width:36,textAlign:"center"}}>{r.emoji||"🍽️"}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:700,color:G.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</div>
+                    <div style={{fontSize:11,color:G.sub}}>{new Date(h.viewedAt).toLocaleDateString("ja-JP")}</div>
                   </div>
-                );
-              })
-            }
+                </div>
+              );})}
           </div>
         </div>
       )}
@@ -926,11 +892,15 @@ export default function App(){
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div>
               <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:19,fontWeight:900,letterSpacing:1,background:"linear-gradient(135deg,#e8825a,#c85a8a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>🍳 レシピノート</div>
-              <div style={{color:G.sub,fontSize:10,marginTop:1}}>{userName} • {recipes.length}品{room&&<span style={{color:G.blue}}>{" • 👥 "+room.code}</span>}</div>
+              <div style={{color:G.sub,fontSize:10,marginTop:1,display:"flex",alignItems:"center",gap:6}}>
+                <span>{userName} • {recipes.length}品</span>
+                {members.length>1&&<span style={{color:G.blue}}>{"👥 "+members.join("・")}</span>}
+                <span style={{fontSize:11}}>{syncIcon}</span>
+              </div>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <button onClick={()=>setShowHistory(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:G.sub,cursor:"pointer",fontSize:16}}>🕐</button>
-              <button onClick={()=>setShowRoom(true)} style={{background:room?"linear-gradient(135deg,#5a9ee8,#3a7ec8)":G.card,border:"1.5px solid "+(room?G.blue:G.border),borderRadius:10,padding:"8px 10px",color:room?"#fff":G.sub,cursor:"pointer",fontSize:14,fontWeight:room?700:400}}>👥</button>
+              <button onClick={()=>syncData(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:syncStatus==="ok"?G.green:syncStatus==="error"?"#e85a5a":G.sub,cursor:"pointer",fontSize:14}}>{syncIcon}</button>
               <button onClick={()=>setView("add")} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:12,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 4px 16px #e8825a44"}}>＋</button>
             </div>
           </div>
@@ -965,7 +935,7 @@ export default function App(){
           </div>
         ):(
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14}}>
-            {sorted.map(r=><RecipeCard key={r.id} recipe={r} onClick={()=>handleView(r)} onDelete={handleDelete} onToggleFav={handleToggleFav} roomMember={room?userName:null}/>)}
+            {sorted.map(r=><RecipeCard key={r.id} recipe={r} onClick={()=>handleView(r)} onDelete={handleDelete} onToggleFav={handleToggleFav} userName={userName}/>)}
           </div>
         )}
       </div>
