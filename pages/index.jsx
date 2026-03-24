@@ -22,6 +22,8 @@ input[type=file]{display:none!important}
 ::-webkit-scrollbar-thumb{background:#2a2a45;border-radius:4px}
 `;
 
+const toMs=(v)=>{if(!v)return 0;const d=new Date(v);return isNaN(d)?0:d.getTime();};
+
 function scaleAmount(str,scale){
   if(!str||scale===1)return str;
   return str.replace(/(\d+\.?\d*)/g,(m)=>{const n=parseFloat(m)*scale;return Number.isInteger(n)?String(n):n.toFixed(1);});
@@ -39,7 +41,6 @@ async function readFile(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("失敗"));r.readAsDataURL(file);});
 }
 
-// AI送信用圧縮（小さめ・軽量）
 async function compressForAI(file){
   return new Promise((resolve,reject)=>{
     const img=new Image();
@@ -63,7 +64,6 @@ async function compressForAI(file){
   });
 }
 
-// Storage用圧縮（高品質）
 async function compressAndUpload(file,pathPrefix){
   return new Promise((resolve,reject)=>{
     const img=new Image();
@@ -112,7 +112,6 @@ function extractStoragePaths(recipe){
 async function extractRecipe({imageFile,text}){
   let imageBase64=null,imageMediaType=null;
   if(imageFile){
-    // AI送信前に圧縮してサイズ削減
     const compressed=await compressForAI(imageFile);
     imageBase64=compressed.base64;
     imageMediaType=compressed.mediaType;
@@ -233,9 +232,7 @@ function loadTagCats(){
   if(typeof window==="undefined")return DEFAULT_TAG_CATS;
   try{const s=localStorage.getItem(TAG_CATS_KEY);return s?JSON.parse(s):DEFAULT_TAG_CATS;}catch{return DEFAULT_TAG_CATS;}
 }
-function saveTagCats(cats){
-  try{localStorage.setItem(TAG_CATS_KEY,JSON.stringify(cats));}catch{}
-}
+function saveTagCats(cats){try{localStorage.setItem(TAG_CATS_KEY,JSON.stringify(cats));}catch{}}
 
 const PAL=["#e8825a","#5a9ee8","#5ac87a","#c85a8a","#c8a85a","#8a5ac8","#5ac8c8","#e8c05a"];
 const tagColor=(t)=>PAL[Math.abs([...t].reduce((a,c)=>a+c.charCodeAt(0),0))%PAL.length];
@@ -277,7 +274,6 @@ function Tag({label,active,onClick,onRemove}){
   );
 }
 
-// ── タグ編集（レシピ個別）─────────────────────────────
 function TagEditor({tags,onSave,onClose}){
   const [cur,setCur]=useState([...tags]);
   const [custom,setCustom]=useState("");
@@ -303,14 +299,11 @@ function TagEditor({tags,onSave,onClose}){
           <div style={{fontWeight:700,color:G.text,fontSize:16}}>🏷 タグを編集</div>
           <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
-        {/* カスタム追加 */}
         <div style={{display:"flex",gap:8,marginBottom:12}}>
           <input value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="カスタムタグを直接追加..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
           <button onClick={add} style={{padding:"9px 16px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>追加</button>
         </div>
-        {/* 選択中タグ */}
         {cur.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14,padding:10,background:G.input,borderRadius:12}}>{cur.map((t,i)=><Tag key={i} label={t} active onRemove={()=>toggle(t)}/>)}</div>}
-        {/* カテゴリ別 */}
         {tagCats.map((cat,ci)=>(
           <div key={ci} style={{marginBottom:8,border:"1.5px solid "+G.border,borderRadius:12,overflow:"hidden"}}>
             <button onClick={()=>setOpen(p=>({...p,[ci]:!p[ci]}))} style={{width:"100%",padding:"10px 14px",border:"none",background:open[ci]?G.input+"cc":G.input,color:G.text,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",justifyContent:"space-between"}}>
@@ -345,7 +338,6 @@ function TagEditor({tags,onSave,onClose}){
   );
 }
 
-// ── タグ全体管理 ───────────────────────────────────────
 function TagManagement({recipes,onUpdateAll,onClose}){
   const [editingTag,setEditingTag]=useState(null);
   const [editValue,setEditValue]=useState("");
@@ -367,10 +359,8 @@ function TagManagement({recipes,onUpdateAll,onClose}){
 
   const renameTag=(oldTag,newTag)=>{
     if(!newTag.trim()||newTag===oldTag)return;
-    const updated=activeRecipes.map(r=>({...r,tags:(r.tags||[]).map(t=>t===oldTag?newTag.trim():t),updatedAt:new Date().toISOString()}));
-    // 全レシピ（墓石含む）に対してマージ
-    const merged=recipes.map(r=>updated.find(u=>u.id===r.id)||r);
-    onUpdateAll(merged);setEditingTag(null);setToast("✅ タグを変更しました");
+    const updated=recipes.map(r=>r.deleted?r:{...r,tags:(r.tags||[]).map(t=>t===oldTag?newTag.trim():t),updatedAt:new Date().toISOString()});
+    onUpdateAll(updated);setEditingTag(null);setToast("✅ タグを変更しました");
   };
   const deleteTag=(tag)=>{
     const updated=recipes.map(r=>r.deleted?r:{...r,tags:(r.tags||[]).filter(t=>t!==tag),updatedAt:new Date().toISOString()});
@@ -391,14 +381,8 @@ function TagManagement({recipes,onUpdateAll,onClose}){
     const updated=tagCats.map((cat,i)=>i===ci?{...cat,label:label.trim()}:cat);
     saveCat(updated);setEditingCat(null);
   };
-  const addNewCat=()=>{
-    const updated=[...tagCats,{label:"🆕 新カテゴリ",tags:[]}];
-    saveCat(updated);
-  };
-  const deleteCat=(ci)=>{
-    const updated=tagCats.filter((_,i)=>i!==ci);
-    saveCat(updated);
-  };
+  const addNewCat=()=>{saveCat([...tagCats,{label:"🆕 新カテゴリ",tags:[]}]);};
+  const deleteCat=(ci)=>{saveCat(tagCats.filter((_,i)=>i!==ci));};
 
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:1500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -409,8 +393,6 @@ function TagManagement({recipes,onUpdateAll,onClose}){
           <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
         <div style={{fontSize:12,color:G.sub,marginBottom:16}}>使用中のタグ一覧・カテゴリの編集ができます</div>
-
-        {/* 使用中タグ一覧 */}
         <div style={{background:G.input,borderRadius:14,padding:14,marginBottom:16,border:"1.5px solid "+G.border}}>
           <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📊 使用中のタグ（{tagMap.size}種）</div>
           {tagMap.size===0?(
@@ -426,10 +408,7 @@ function TagManagement({recipes,onUpdateAll,onClose}){
                   </div>
                 ):(
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
-                      <Tag label={tag}/>
-                      <span style={{fontSize:10,color:G.sub}}>{count}品</span>
-                    </div>
+                    <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}><Tag label={tag}/><span style={{fontSize:10,color:G.sub}}>{count}品</span></div>
                     <button onClick={()=>{setEditingTag(tag);setEditValue(tag);}} style={{padding:"4px 10px",borderRadius:7,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:11,cursor:"pointer"}}>編集</button>
                     <button onClick={()=>setConfirmDelete(tag)} style={{padding:"4px 10px",borderRadius:7,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:11,cursor:"pointer",fontWeight:700}}>削除</button>
                   </div>
@@ -438,18 +417,14 @@ function TagManagement({recipes,onUpdateAll,onClose}){
             ))
           )}
         </div>
-
-        {/* カテゴリ管理 */}
-        <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📂 カテゴリ管理（タグ候補の編集）</div>
+        <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📂 カテゴリ管理</div>
         {tagCats.map((cat,ci)=>(
           <div key={ci} style={{marginBottom:8,border:"1.5px solid "+G.border,borderRadius:12,overflow:"hidden"}}>
             <div style={{display:"flex",alignItems:"center",background:G.input}}>
               <button onClick={()=>setOpen(p=>({...p,[ci]:!p[ci]}))} style={{flex:1,padding:"10px 14px",border:"none",background:"transparent",color:G.text,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"left"}}>
                 {editingCat===ci?(
                   <input value={editCatValue} onChange={e=>setEditCatValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameCat(ci,editCatValue);if(e.key==="Escape")setEditingCat(null);}} onClick={e=>e.stopPropagation()} autoFocus style={{padding:"3px 8px",borderRadius:6,border:"1.5px solid "+G.accent,background:G.dark,color:G.text,fontSize:13,WebkitAppearance:"none",width:"80%"}}/>
-                ):(
-                  cat.label
-                )}
+                ):cat.label}
               </button>
               <div style={{display:"flex",gap:4,padding:"0 10px"}}>
                 {editingCat===ci?(
@@ -944,7 +919,7 @@ function AddScreen({onBack,onAdd,userName}){
   if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
   const process=async({imageFile,text})=>{
     setLoading(true);setLoadingMsg(imageFile?"🤖 解析中...":"🔍 取得中...");
-    try{const data=await extractRecipe({imageFile,text});onAdd({...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],updatedAt:new Date().toISOString(),sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)});}
+    try{const data=await extractRecipe({imageFile,text});onAdd({...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)});}
     catch(e){setLoading(false);setToast("❌ "+e.message);}
   };
   return(
@@ -1036,12 +1011,10 @@ export default function App(){
     local.forEach(r=>map.set(r.id,r));
     remote.forEach(r=>{
       const ex=map.get(r.id);
-      if(!ex)map.set(r.id,r);
-      else{
-        const lu=ex.updatedAt||ex.addedAt||"";
-        const ru=r.updatedAt||r.addedAt||"";
-        if(ru>lu)map.set(r.id,r);
-      }
+      if(!ex){map.set(r.id,r);return;}
+      const lu=toMs(ex.updatedAt||ex.addedAt);
+      const ru=toMs(r.updatedAt||r.addedAt);
+      if(ru>lu)map.set(r.id,r);
     });
     return Array.from(map.values());
   };
@@ -1075,8 +1048,17 @@ export default function App(){
   };
 
   const persist=(updated)=>{
-    setRecipes(updated);localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));
-    doSync(updated,userName).then(r=>{if(r?.members)setMembers(r.members);setSyncStatus("ok");setLastSync(Date.now());}).catch(()=>setSyncStatus("error"));
+    setRecipes(updated);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));
+    doSync(updated,userName).then(r=>{
+      if(r?.recipes){
+        const merged=mergeRecipes(updated,r.recipes);
+        setRecipes(merged);
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
+      }
+      if(r?.members)setMembers(r.members);
+      setSyncStatus("ok");setLastSync(Date.now());
+    }).catch(()=>setSyncStatus("error"));
   };
 
   const persistHistory=(h)=>{setHistory(h);try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h));}catch{}};
@@ -1085,8 +1067,6 @@ export default function App(){
     const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP"),updatedAt:recipe.updatedAt||new Date().toISOString()};
     persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");
   };
-
-  // Tombstoneパターン：論理削除
   const handleDelete=async(id)=>{
     const recipe=recipes.find(r=>r.id===id);
     if(recipe&&!recipe.deleted)await deleteStoragePhotos(extractStoragePaths(recipe));
@@ -1094,14 +1074,8 @@ export default function App(){
     persist(recipes.map(r=>r.id===id?tombstone:r));
     setToast("🗑 削除しました");
   };
-
-  const handleUpdate=(updated)=>{
-    const l=recipes.map(r=>r.id===updated.id?updated:r);
-    persist(l);setSelected(updated);
-  };
-  const handleToggleFav=(id)=>{
-    persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite,updatedAt:new Date().toISOString()}:r));
-  };
+  const handleUpdate=(updated)=>{const l=recipes.map(r=>r.id===updated.id?updated:r);persist(l);setSelected(updated);};
+  const handleToggleFav=(id)=>{persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite,updatedAt:new Date().toISOString()}:r));};
   const handleUpdateAll=(updatedRecipes)=>{persist(updatedRecipes);};
   const handleCopy=(recipe)=>{
     const copied={...recipe,id:Date.now(),title:recipe.title+" (コピー)",addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],madeCount:0,lastMade:null,favorite:false,photo:null,stepPhotos:{}};
@@ -1114,7 +1088,6 @@ export default function App(){
     persist(recipes.map(r=>r.id===recipe.id?{...r,viewCount:(r.viewCount||0)+1,updatedAt:new Date().toISOString()}:r));
   };
 
-  // 論理削除を除外したアクティブレシピ
   const activeRecipes=useMemo(()=>recipes.filter(r=>!r.deleted),[recipes]);
 
   const SORT_OPTS=[{id:"date",label:"追加日"},{id:"views",label:"よく見る"},{id:"made",label:"作った回数"},{id:"az",label:"あいうえお"}];
