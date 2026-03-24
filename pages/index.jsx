@@ -270,6 +270,64 @@ function TagEditor({tags,onSave,onClose}){
   );
 }
 
+function TagManagement({recipes,onUpdateAll,onClose}){
+  const [editingTag,setEditingTag]=useState(null);
+  const [editValue,setEditValue]=useState("");
+  const [confirmDelete,setConfirmDelete]=useState(null);
+  const [toast,setToast]=useState("");
+  const tagMap=useMemo(()=>{
+    const map=new Map();
+    recipes.forEach(r=>{(r.tags||[]).forEach(t=>{map.set(t,(map.get(t)||0)+1);});});
+    return new Map([...map.entries()].sort((a,b)=>b[1]-a[1]));
+  },[recipes]);
+  const renameTag=(oldTag,newTag)=>{
+    if(!newTag.trim()||newTag===oldTag)return;
+    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).map(t=>t===oldTag?newTag.trim():t)}));
+    onUpdateAll(updated);setEditingTag(null);setToast("✅ タグを変更しました");
+  };
+  const deleteTag=(tag)=>{
+    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).filter(t=>t!==tag)}));
+    onUpdateAll(updated);setConfirmDelete(null);setToast("🗑 タグを削除しました");
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:1500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      {confirmDelete&&<ConfirmDialog msg={"「"+confirmDelete+"」を全レシピから削除しますか？"} onOk={()=>deleteTag(confirmDelete)} onCancel={()=>setConfirmDelete(null)}/>}
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 44px",maxHeight:"85vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <div style={{fontWeight:700,color:G.text,fontSize:17}}>🏷 タグ管理</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{fontSize:12,color:G.sub,marginBottom:18}}>タップで編集・削除できます</div>
+        {tagMap.size===0?(
+          <div style={{textAlign:"center",padding:"32px 0",color:G.sub,fontSize:13}}>タグがありません</div>
+        ):(
+          [...tagMap.entries()].map(([tag,count])=>(
+            <div key={tag} style={{marginBottom:8}}>
+              {editingTag===tag?(
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <input value={editValue} onChange={e=>setEditValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameTag(tag,editValue);if(e.key==="Escape")setEditingTag(null);}} autoFocus style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.accent,background:G.input,color:G.text,fontSize:14,WebkitAppearance:"none"}}/>
+                  <button onClick={()=>renameTag(tag,editValue)} style={{padding:"9px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>変更</button>
+                  <button onClick={()=>setEditingTag(null)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer",flexShrink:0}}>✕</button>
+                </div>
+              ):(
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,background:G.input,border:"1.5px solid "+G.border}}>
+                  <div style={{flex:1,display:"flex",alignItems:"center",gap:10}}>
+                    <Tag label={tag}/>
+                    <span style={{fontSize:11,color:G.sub}}>{count}品</span>
+                  </div>
+                  <button onClick={()=>{setEditingTag(tag);setEditValue(tag);}} style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid "+G.border,background:G.card,color:G.sub,fontSize:12,cursor:"pointer"}}>編集</button>
+                  <button onClick={()=>setConfirmDelete(tag)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:12,cursor:"pointer",fontWeight:700}}>削除</button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        {toast&&<div style={{marginTop:16,padding:"10px 14px",borderRadius:12,background:G.accent+"22",color:G.accent,fontSize:13,fontWeight:700,textAlign:"center"}}>{toast}</div>}
+      </div>
+    </div>
+  );
+}
+
 function ShoppingList({recipe,onClose}){
   const [checked,setChecked]=useState({});
   const [copied,setCopied]=useState(false);
@@ -777,6 +835,7 @@ export default function App(){
   const [sortOpen,setSortOpen]=useState(false);
   const [filterFav,setFilterFav]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
+  const [showTagManagement,setShowTagManagement]=useState(false);
   const [history,setHistory]=useState([]);
   const [toast,setToast]=useState("");
   const [sharedRecipe,setSharedRecipe]=useState(null);
@@ -853,6 +912,7 @@ export default function App(){
   const handleDelete=async(id)=>{persist(recipes.filter(r=>r.id!==id));setToast("🗑 削除しました");};
   const handleUpdate=(updated)=>{const l=recipes.map(r=>r.id===updated.id?updated:r);persist(l);setSelected(updated);};
   const handleToggleFav=(id)=>{persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite}:r));};
+  const handleUpdateAll=(updatedRecipes)=>{persist(updatedRecipes);};
   const handleCopy=(recipe)=>{
     const copied={...recipe,id:Date.now(),title:recipe.title+" (コピー)",addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],madeCount:0,lastMade:null,favorite:false,photo:null,stepPhotos:{}};
     persist([copied,...recipes]);setToast("📋 コピーしました");setView("home");setSelected(null);
@@ -915,6 +975,7 @@ export default function App(){
     <div style={{minHeight:"100vh",background:G.dark}}>
       <style>{CSS}</style>
       {sharedRecipe&&<ImportBanner recipe={sharedRecipe} onImport={()=>{handleAdd({...sharedRecipe,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[]});setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}} onDismiss={()=>{setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}}/>}
+      {showTagManagement&&<TagManagement recipes={recipes} onUpdateAll={handleUpdateAll} onClose={()=>setShowTagManagement(false)}/>}
 
       {showHistory&&(
         <div onClick={()=>setShowHistory(false)} style={{position:"fixed",inset:0,background:"#000c",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -950,6 +1011,7 @@ export default function App(){
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <button onClick={()=>setShowHistory(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:G.sub,cursor:"pointer",fontSize:16}}>🕐</button>
+              <button onClick={()=>setShowTagManagement(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:G.sub,cursor:"pointer",fontSize:16}}>🏷</button>
               <button onClick={()=>syncData(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:syncStatus==="ok"?G.green:syncStatus==="error"?"#e85a5a":G.sub,cursor:"pointer",fontSize:14}}>{syncIcon}</button>
               <button onClick={()=>setView("add")} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:12,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 4px 16px #e8825a44"}}>＋</button>
             </div>
