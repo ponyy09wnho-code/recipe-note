@@ -74,9 +74,7 @@ async function compressAndUpload(file,pathPrefix){
 
 async function deleteStoragePhotos(paths){
   if(!paths||!paths.length)return;
-  try{
-    await fetch("/api/upload",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({paths})});
-  }catch{}
+  try{await fetch("/api/upload",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({paths})});}catch{}
 }
 
 function extractStoragePaths(recipe){
@@ -276,12 +274,9 @@ function ShoppingList({recipe,onClose}){
   const [checked,setChecked]=useState({});
   const [copied,setCopied]=useState(false);
   const toggle=(i)=>setChecked(p=>({...p,[i]:!p[i]}));
-  const allText=(recipe.ingredients||[]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
   const uncheckedText=(recipe.ingredients||[]).filter((_,i)=>!checked[i]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
-  const copy=()=>{
-    navigator.clipboard?.writeText(uncheckedText||allText);
-    setCopied(true);setTimeout(()=>setCopied(false),2000);
-  };
+  const allText=(recipe.ingredients||[]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
+  const copy=()=>{navigator.clipboard?.writeText(uncheckedText||allText);setCopied(true);setTimeout(()=>setCopied(false),2000);};
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"80vh",overflowY:"auto",border:"2px solid "+G.green+"44"}}>
@@ -431,7 +426,6 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const startEdit=()=>{setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""]});setEditing(true);};
   const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});setEditing(false);};
   const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP")});
-
   const handleHeroPhoto=async(f)=>{if(!f)return;try{const url=await compressAndUpload(f,"hero/"+recipe.id);onUpdate({...recipe,photo:url});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
   const handleStepPhoto=async(f,i)=>{if(!f)return;try{const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);const sp={...(recipe.stepPhotos||{})};sp[i]=url;onUpdate({...recipe,stepPhotos:sp});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
   const handleCommentPhoto=async(f)=>{if(!f)return;setPhotoLoading(true);try{const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());setCommentPhoto(url);}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}finally{setPhotoLoading(false);}};
@@ -766,7 +760,10 @@ function AddScreen({onBack,onAdd,userName}){
 }
 
 export default function App(){
-  const [authed,setAuthed]=useState(()=>localStorage.getItem(AUTH_KEY)==="ok");
+  const [authed,setAuthed]=useState(()=>{
+    if(typeof window==="undefined")return false;
+    return localStorage.getItem(AUTH_KEY)==="ok";
+  });
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
   const [userName,setUserName]=useState("");
@@ -788,12 +785,8 @@ export default function App(){
   const [members,setMembers]=useState([]);
 
   const checkPassword=()=>{
-    if(pwInput===APP_PASSWORD){
-      localStorage.setItem(AUTH_KEY,"ok");
-      setAuthed(true);setPwError(false);
-    }else{
-      setPwError(true);setPwInput("");
-    }
+    if(pwInput===APP_PASSWORD){localStorage.setItem(AUTH_KEY,"ok");setAuthed(true);setPwError(false);}
+    else{setPwError(true);setPwInput("");}
   };
 
   useEffect(()=>{
@@ -889,7 +882,6 @@ export default function App(){
   const allTags=[...new Set(recipes.flatMap(r=>r.tags||[]))];
   const syncIcon=syncStatus==="syncing"?"⏳":syncStatus==="ok"?"✅":syncStatus==="error"?"❌":"🔄";
 
-  // ── パスワード画面 ──
   if(!authed)return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{CSS}</style>
@@ -897,21 +889,13 @@ export default function App(){
         <div style={{fontSize:64,marginBottom:12}}>🔒</div>
         <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:24,fontWeight:900,marginBottom:6,background:"linear-gradient(135deg,#e8825a,#c85a8a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>レシピノート</div>
         <div style={{color:G.sub,fontSize:13,marginBottom:28,lineHeight:1.8}}>パスワードを入力してください</div>
-        <input
-          value={pwInput}
-          onChange={e=>{setPwInput(e.target.value);setPwError(false);}}
-          onKeyDown={e=>e.key==="Enter"&&checkPassword()}
-          type="password"
-          placeholder="パスワード"
-          style={{width:"100%",padding:"15px 16px",borderRadius:14,border:"2px solid "+(pwError?"#e85a5a":G.border),background:G.card,color:G.text,fontSize:15,marginBottom:10,display:"block",WebkitAppearance:"none",textAlign:"center",letterSpacing:4}}
-        />
+        <input value={pwInput} onChange={e=>{setPwInput(e.target.value);setPwError(false);}} onKeyDown={e=>e.key==="Enter"&&checkPassword()} type="password" placeholder="パスワード" style={{width:"100%",padding:"15px 16px",borderRadius:14,border:"2px solid "+(pwError?"#e85a5a":G.border),background:G.card,color:G.text,fontSize:15,marginBottom:10,display:"block",WebkitAppearance:"none",textAlign:"center",letterSpacing:4}}/>
         {pwError&&<div style={{color:"#e85a5a",fontSize:13,marginBottom:10}}>パスワードが違います</div>}
         <button onClick={checkPassword} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",background:pwInput?"linear-gradient(135deg,#e8825a,#c8603a)":G.input,color:G.text,fontSize:15,fontWeight:700,cursor:pwInput?"pointer":"default",boxShadow:pwInput?"0 6px 20px #e8825a44":"none"}}>入る →</button>
       </div>
     </div>
   );
 
-  // ── 名前入力画面 ──
   if(!userName)return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{CSS}</style>
