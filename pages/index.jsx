@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 
 const STORAGE_KEY = "recipe-note-v2";
 const HISTORY_KEY = "recipe-history";
+const AUTH_KEY = "recipe-note-auth";
+const APP_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD || "";
 
 const G = {
   dark:"#0a0a12", card:"#13132a", input:"#1a1a30", border:"#2a2a45",
@@ -37,55 +39,57 @@ async function readFile(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("失敗"));r.readAsDataURL(file);});
 }
 
-async function compressAndUpload(file, pathPrefix){
-  return new Promise((resolve, reject)=>{
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = async ()=>{
+async function compressAndUpload(file,pathPrefix){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=async()=>{
       URL.revokeObjectURL(url);
       try{
-        const MAX = 1200;
-        let w = img.width, h = img.height;
-        if(w > MAX || h > MAX){
-          if(w > h){h = Math.round(h * MAX / w); w = MAX;}
-          else{w = Math.round(w * MAX / h); h = MAX;}
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-        canvas.toBlob(async (blob)=>{
+        const MAX=1200;
+        let w=img.width,h=img.height;
+        if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+        const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,w,h);
+        canvas.toBlob(async(blob)=>{
           try{
-            const reader = new FileReader();
-            reader.onload = async ()=>{
-              const base64 = reader.result.split(",")[1];
-              const path = pathPrefix + "_" + Date.now() + ".jpg";
-              const res = await fetch("/api/upload",{
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body: JSON.stringify({base64, mediaType:"image/jpeg", path}),
-              });
-              if(!res.ok) throw new Error("アップロード失敗");
-              const data = await res.json();
-              resolve(data.url);
+            const reader=new FileReader();
+            reader.onload=async()=>{
+              const base64=reader.result.split(",")[1];
+              const path=pathPrefix+"_"+Date.now()+".jpg";
+              const res=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({base64,mediaType:"image/jpeg",path})});
+              if(!res.ok)throw new Error("アップロード失敗");
+              const data=await res.json();resolve(data.url);
             };
-            reader.onerror = ()=>reject(new Error("読み込み失敗"));
+            reader.onerror=()=>reject(new Error("読み込み失敗"));
             reader.readAsDataURL(blob);
           }catch(e){reject(e);}
-        }, "image/jpeg", 0.75);
+        },"image/jpeg",0.75);
       }catch(e){reject(e);}
     };
-    img.onerror = ()=>reject(new Error("画像読み込み失敗"));
-    img.src = url;
+    img.onerror=()=>reject(new Error("画像読み込み失敗"));
+    img.src=url;
   });
+}
+
+async function deleteStoragePhotos(paths){
+  if(!paths||!paths.length)return;
+  try{
+    await fetch("/api/upload",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({paths})});
+  }catch{}
+}
+
+function extractStoragePaths(recipe){
+  const paths=[];
+  if(recipe.photo&&recipe.photo.includes("supabase"))paths.push("hero/"+recipe.id);
+  Object.keys(recipe.stepPhotos||{}).forEach(i=>{if(recipe.stepPhotos[i]&&recipe.stepPhotos[i].includes("supabase"))paths.push("steps/"+recipe.id+"_"+i);});
+  (recipe.comments||[]).forEach(c=>{if(c.photo&&c.photo.includes("supabase"))paths.push("comments/"+c.id);});
+  return paths;
 }
 
 async function extractRecipe({imageFile,text}){
   let imageBase64=null,imageMediaType=null;
-  if(imageFile){
-    const d=await readFile(imageFile);
-    imageBase64=d.split(",")[1];imageMediaType=imageFile.type||"image/jpeg";
-  }
+  if(imageFile){const d=await readFile(imageFile);imageBase64=d.split(",")[1];imageMediaType=imageFile.type||"image/jpeg";}
   const prompt=imageFile?"この画像からレシピ情報を抽出してください。":"以下からレシピを抽出してください:\n\n"+text;
   const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imageBase64,imageMediaType})});
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error||"エラー");}
@@ -171,10 +175,7 @@ async function exportImage(recipe){
 }
 
 function encodeShareURL(recipe){
-  try{
-    const d={...recipe,comments:[],stepPhotos:{},photo:null};
-    return window.location.origin+window.location.pathname+"?share="+btoa(unescape(encodeURIComponent(JSON.stringify(d))));
-  }catch{return null;}
+  try{const d={...recipe,comments:[],stepPhotos:{},photo:null};return window.location.origin+window.location.pathname+"?share="+btoa(unescape(encodeURIComponent(JSON.stringify(d))));}catch{return null;}
 }
 function parseShareParam(){
   if(typeof window==="undefined")return null;
@@ -182,7 +183,6 @@ function parseShareParam(){
   const s=p.get("share");if(!s)return null;
   try{return JSON.parse(decodeURIComponent(escape(atob(s))));}catch{return null;}
 }
-
 async function doSync(localRecipes,userName){
   const res=await fetch("/api/room",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipes:localRecipes,member:userName})});
   if(!res.ok)throw new Error("同期失敗");
@@ -271,6 +271,47 @@ function TagEditor({tags,onSave,onClose}){
     </div>
   );
 }
+
+function ShoppingList({recipe,onClose}){
+  const [checked,setChecked]=useState({});
+  const [copied,setCopied]=useState(false);
+  const toggle=(i)=>setChecked(p=>({...p,[i]:!p[i]}));
+  const allText=(recipe.ingredients||[]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
+  const uncheckedText=(recipe.ingredients||[]).filter((_,i)=>!checked[i]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
+  const copy=()=>{
+    navigator.clipboard?.writeText(uncheckedText||allText);
+    setCopied(true);setTimeout(()=>setCopied(false),2000);
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"80vh",overflowY:"auto",border:"2px solid "+G.green+"44"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <div style={{fontWeight:700,color:G.text,fontSize:16}}>🛒 買い物リスト</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{fontSize:12,color:G.sub,marginBottom:16}}>{recipe.title}</div>
+        <div style={{marginBottom:16}}>
+          {(recipe.ingredients||[]).map((ing,i)=>(
+            <div key={i} onClick={()=>toggle(i)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:12,marginBottom:6,background:checked[i]?G.input+"88":G.input,border:"1.5px solid "+(checked[i]?G.border+"44":G.border),cursor:"pointer",transition:"all 0.15s"}}>
+              <div style={{width:22,height:22,borderRadius:"50%",border:"2px solid "+(checked[i]?G.green:G.border),background:checked[i]?"linear-gradient(135deg,#5ac87a,#3aa85a)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                {checked[i]&&<span style={{color:"#fff",fontSize:12}}>✓</span>}
+              </div>
+              <div style={{flex:1}}>
+                <span style={{fontSize:14,color:checked[i]?G.sub:G.text,textDecoration:checked[i]?"line-through":"none",transition:"all 0.15s"}}>{ing.name}</span>
+                {ing.amount&&<span style={{fontSize:12,color:G.sub,marginLeft:8}}>{ing.amount}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setChecked({})} style={{flex:1,padding:"12px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:13}}>リセット</button>
+          <button onClick={copy} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:copied?"linear-gradient(135deg,#5ac87a,#3aa85a)":"linear-gradient(135deg,#5a9ee8,#3a7ec8)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>{copied?"✅ コピーしました":"📋 未チェックをコピー"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareModal({recipe,onClose}){
   const [copied,setCopied]=useState(false);
   const url=encodeShareURL(recipe);
@@ -331,6 +372,7 @@ function NutritionPanel({recipe,onUpdate}){
     </div>
   );
 }
+
 function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
   const [hov,setHov]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -367,7 +409,8 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
     </>
   );
 }
-function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
+
+function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const [tab,setTab]=useState("recipe");
   const [editing,setEditing]=useState(false);
   const [editData,setEditData]=useState(null);
@@ -378,6 +421,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
   const [confirmDelComment,setConfirmDelComment]=useState(null);
   const [confirmDelRecipe,setConfirmDelRecipe]=useState(false);
   const [showShare,setShowShare]=useState(false);
+  const [showShopping,setShowShopping]=useState(false);
   const [servings,setServings]=useState(()=>{const n=parseInt(recipe.servings);return isNaN(n)?2:n;});
   const base=parseInt(recipe.servings)||2;
   const scale=servings/base;
@@ -388,31 +432,9 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
   const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});setEditing(false);};
   const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP")});
 
-  const handleHeroPhoto=async(f)=>{
-    if(!f)return;
-    try{
-      const url=await compressAndUpload(f,"hero/"+recipe.id);
-      onUpdate({...recipe,photo:url});
-    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
-  };
-  const handleStepPhoto=async(f,i)=>{
-    if(!f)return;
-    try{
-      const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);
-      const sp={...(recipe.stepPhotos||{})};sp[i]=url;
-      onUpdate({...recipe,stepPhotos:sp});
-    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
-  };
-  const handleCommentPhoto=async(f)=>{
-    if(!f)return;
-    setPhotoLoading(true);
-    try{
-      const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());
-      setCommentPhoto(url);
-    }catch(e){alert("写真のアップロードに失敗しました: "+e.message);}
-    finally{setPhotoLoading(false);}
-  };
-
+  const handleHeroPhoto=async(f)=>{if(!f)return;try{const url=await compressAndUpload(f,"hero/"+recipe.id);onUpdate({...recipe,photo:url});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
+  const handleStepPhoto=async(f,i)=>{if(!f)return;try{const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);const sp={...(recipe.stepPhotos||{})};sp[i]=url;onUpdate({...recipe,stepPhotos:sp});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
+  const handleCommentPhoto=async(f)=>{if(!f)return;setPhotoLoading(true);try{const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());setCommentPhoto(url);}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}finally{setPhotoLoading(false);}};
   const submitComment=()=>{if(!commentText.trim()&&!commentPhoto)return;onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}]});setCommentText("");setCommentPhoto(null);};
   const inS={padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
@@ -420,8 +442,10 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000d",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       {showTagEditor&&<TagEditor tags={editing?editData.tags:recipe.tags||[]} onSave={tags=>{if(editing)setEditData(d=>({...d,tags}));else onUpdate({...recipe,tags});setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
       {confirmDelComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDelComment)});setConfirmDelComment(null);}} onCancel={()=>setConfirmDelComment(null)}/>}
-      {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={()=>{onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
+      {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={async()=>{await deleteStoragePhotos(extractStoragePaths(recipe));onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
       {showShare&&<ShareModal recipe={recipe} onClose={()=>setShowShare(false)}/>}
+      {showShopping&&<ShoppingList recipe={recipe} onClose={()=>setShowShopping(false)}/>}
+
       <div onClick={e=>e.stopPropagation()} style={{background:G.dark,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 30px 80px #000c",border:"2px solid "+c1+"55"}}>
         <div style={{height:150,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:82,borderRadius:"22px 22px 0 0",position:"relative"}}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
@@ -436,6 +460,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
             <button onClick={startEdit} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>✏️ 編集</button>
           </div>
         </div>
+
         <div style={{padding:"18px 20px 30px"}}>
           {editing?(
             <div>
@@ -505,7 +530,10 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
             <div>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,gap:8}}>
                 <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:22,fontWeight:900,color:G.text,lineHeight:1.2,flex:1}}>{recipe.title}</div>
-                <button onClick={()=>setConfirmDelRecipe(true)} style={{background:"none",border:"none",color:"#e85a5a",cursor:"pointer",fontSize:16,flexShrink:0,padding:"4px"}}>🗑</button>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>onCopy(recipe)} style={{background:G.blue+"22",border:"none",color:G.blue,cursor:"pointer",fontSize:13,padding:"4px 8px",borderRadius:8,fontWeight:700}}>📋 コピー</button>
+                  <button onClick={()=>setConfirmDelRecipe(true)} style={{background:"none",border:"none",color:"#e85a5a",cursor:"pointer",fontSize:16,padding:"4px"}}>🗑</button>
+                </div>
               </div>
               <div style={{color:G.sub,fontSize:13,marginBottom:10}}>{recipe.description}</div>
               {recipe.lastMade&&<div style={{fontSize:11,color:G.green,marginBottom:10}}>{"✅ 最終調理: "+recipe.lastMade+(recipe.madeCount>1?" ("+recipe.madeCount+"回)":"")}</div>}
@@ -541,7 +569,10 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
                 <div>
                   {recipe.ingredients?.length>0&&(
                     <div style={{marginBottom:20}}>
-                      <div style={{fontWeight:700,color:G.accent,fontSize:13,marginBottom:10}}>🥘 材料{scale!==1&&<span style={{fontWeight:400,fontSize:11,marginLeft:8}}>（×{scale.toFixed(1)} 換算）</span>}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                        <div style={{fontWeight:700,color:G.accent,fontSize:13}}>🥘 材料{scale!==1&&<span style={{fontWeight:400,fontSize:11,marginLeft:8}}>（×{scale.toFixed(1)} 換算）</span>}</div>
+                        <button onClick={()=>setShowShopping(true)} style={{background:G.green+"22",border:"1px solid "+G.green+"55",borderRadius:10,padding:"4px 10px",color:G.green,fontSize:11,fontWeight:700,cursor:"pointer"}}>🛒 買い物リスト</button>
+                      </div>
                       <div style={{background:G.card,borderRadius:14,padding:"6px 14px",border:"1.5px solid "+G.accent+"33"}}>
                         {recipe.ingredients.map((ing,i)=>(
                           <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<recipe.ingredients.length-1?"1px solid "+G.border+"66":"none",fontSize:13}}>
@@ -618,6 +649,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete}){
     </div>
   );
 }
+
 function ManualForm({onAdd,onBack}){
   const [title,setTitle]=useState(""),[description,setDescription]=useState(""),
     [emoji,setEmoji]=useState("🍳"),[time,setTime]=useState(""),
@@ -681,6 +713,7 @@ function ManualForm({onAdd,onBack}){
     </div>
   );
 }
+
 function AddScreen({onBack,onAdd,userName}){
   const [mode,setMode]=useState("image");
   const [textInput,setTextInput]=useState("");
@@ -731,7 +764,11 @@ function AddScreen({onBack,onAdd,userName}){
     </div>
   );
 }
+
 export default function App(){
+  const [authed,setAuthed]=useState(()=>localStorage.getItem(AUTH_KEY)==="ok");
+  const [pwInput,setPwInput]=useState("");
+  const [pwError,setPwError]=useState(false);
   const [userName,setUserName]=useState("");
   const [nameInput,setNameInput]=useState("");
   const [recipes,setRecipes]=useState([]);
@@ -750,6 +787,15 @@ export default function App(){
   const [lastSync,setLastSync]=useState(null);
   const [members,setMembers]=useState([]);
 
+  const checkPassword=()=>{
+    if(pwInput===APP_PASSWORD){
+      localStorage.setItem(AUTH_KEY,"ok");
+      setAuthed(true);setPwError(false);
+    }else{
+      setPwError(true);setPwInput("");
+    }
+  };
+
   useEffect(()=>{
     try{
       const h=localStorage.getItem(HISTORY_KEY);if(h)setHistory(JSON.parse(h));
@@ -759,7 +805,6 @@ export default function App(){
   },[]);
 
   useEffect(()=>{if(!userName)return;initialSync();},[userName]);
-
   useEffect(()=>{
     if(!userName)return;
     const interval=setInterval(()=>syncData(false),30000);
@@ -783,8 +828,7 @@ export default function App(){
       const remote=await fetchRemote(userName);
       const localSaved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
       const merged=mergeRecipes(localSaved,remote.recipes||[]);
-      setRecipes(merged);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
+      setRecipes(merged);localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
       setMembers(remote.members||[]);
       await doSync(merged,userName);
       setSyncStatus("ok");setLastSync(Date.now());
@@ -799,8 +843,7 @@ export default function App(){
     try{
       const result=await doSync(recipes,userName);
       const merged=mergeRecipes(recipes,result.recipes||[]);
-      setRecipes(merged);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
+      setRecipes(merged);localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));
       setMembers(result.members||[]);
       setSyncStatus("ok");setLastSync(Date.now());
       if(manual)setToast("✅ 同期しました");
@@ -808,19 +851,19 @@ export default function App(){
   };
 
   const persist=(updated)=>{
-    setRecipes(updated);
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));
-    doSync(updated,userName).then(r=>{
-      if(r?.members)setMembers(r.members);
-      setSyncStatus("ok");setLastSync(Date.now());
-    }).catch(()=>setSyncStatus("error"));
+    setRecipes(updated);localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));
+    doSync(updated,userName).then(r=>{if(r?.members)setMembers(r.members);setSyncStatus("ok");setLastSync(Date.now());}).catch(()=>setSyncStatus("error"));
   };
 
   const persistHistory=(h)=>{setHistory(h);try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h));}catch{}};
   const handleAdd=(recipe)=>{const r={...recipe,id:recipe.id||Date.now(),addedBy:recipe.addedBy||userName,addedAt:recipe.addedAt||new Date().toLocaleDateString("ja-JP")};persist([r,...recipes]);setToast("✅ 追加しました！");setView("home");};
-  const handleDelete=(id)=>{persist(recipes.filter(r=>r.id!==id));setToast("🗑 削除しました");};
+  const handleDelete=async(id)=>{persist(recipes.filter(r=>r.id!==id));setToast("🗑 削除しました");};
   const handleUpdate=(updated)=>{const l=recipes.map(r=>r.id===updated.id?updated:r);persist(l);setSelected(updated);};
   const handleToggleFav=(id)=>{persist(recipes.map(r=>r.id===id?{...r,favorite:!r.favorite}:r));};
+  const handleCopy=(recipe)=>{
+    const copied={...recipe,id:Date.now(),title:recipe.title+" (コピー)",addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[],madeCount:0,lastMade:null,favorite:false,photo:null,stepPhotos:{}};
+    persist([copied,...recipes]);setToast("📋 コピーしました");setView("home");setSelected(null);
+  };
   const handleView=(recipe)=>{
     setSelected(recipe);setView("detail");
     const newR={id:recipe.id,title:recipe.title,emoji:recipe.emoji,viewedAt:Date.now()};
@@ -846,6 +889,29 @@ export default function App(){
   const allTags=[...new Set(recipes.flatMap(r=>r.tags||[]))];
   const syncIcon=syncStatus==="syncing"?"⏳":syncStatus==="ok"?"✅":syncStatus==="error"?"❌":"🔄";
 
+  // ── パスワード画面 ──
+  if(!authed)return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <style>{CSS}</style>
+      <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:64,marginBottom:12}}>🔒</div>
+        <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:24,fontWeight:900,marginBottom:6,background:"linear-gradient(135deg,#e8825a,#c85a8a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>レシピノート</div>
+        <div style={{color:G.sub,fontSize:13,marginBottom:28,lineHeight:1.8}}>パスワードを入力してください</div>
+        <input
+          value={pwInput}
+          onChange={e=>{setPwInput(e.target.value);setPwError(false);}}
+          onKeyDown={e=>e.key==="Enter"&&checkPassword()}
+          type="password"
+          placeholder="パスワード"
+          style={{width:"100%",padding:"15px 16px",borderRadius:14,border:"2px solid "+(pwError?"#e85a5a":G.border),background:G.card,color:G.text,fontSize:15,marginBottom:10,display:"block",WebkitAppearance:"none",textAlign:"center",letterSpacing:4}}
+        />
+        {pwError&&<div style={{color:"#e85a5a",fontSize:13,marginBottom:10}}>パスワードが違います</div>}
+        <button onClick={checkPassword} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",background:pwInput?"linear-gradient(135deg,#e8825a,#c8603a)":G.input,color:G.text,fontSize:15,fontWeight:700,cursor:pwInput?"pointer":"default",boxShadow:pwInput?"0 6px 20px #e8825a44":"none"}}>入る →</button>
+      </div>
+    </div>
+  );
+
+  // ── 名前入力画面 ──
   if(!userName)return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{CSS}</style>
@@ -940,7 +1006,7 @@ export default function App(){
         )}
       </div>
 
-      {view==="detail"&&selected&&<RecipeDetail recipe={selected} onClose={()=>{setView("home");setSelected(null);}} onUpdate={handleUpdate} userName={userName} onDelete={(id)=>{handleDelete(id);setView("home");setSelected(null);}}/>}
+      {view==="detail"&&selected&&<RecipeDetail recipe={selected} onClose={()=>{setView("home");setSelected(null);}} onUpdate={handleUpdate} userName={userName} onDelete={(id)=>{handleDelete(id);setView("home");setSelected(null);}} onCopy={handleCopy}/>}
       <Toast msg={toast} onClear={()=>setToast("")}/>
     </div>
   );
