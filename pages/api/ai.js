@@ -20,43 +20,31 @@ tagsのルール:
 - 必ずJSON単体のみを返す`;
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const { prompt, imageBase64, imageMediaType } = req.body;
   try {
-    const userContent = imageBase64
-      ? [
-          { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
-          { type: "text", text: prompt },
-        ]
-      : [{ type: "text", text: prompt }];
-
+    const messages = [
+      { role: "system", content: RECIPE_SYSTEM },
+      { role: "user", content: imageBase64
+        ? [
+            { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}`, detail: "low" } },
+            { type: "text", text: prompt }
+          ]
+        : prompt
+      }
+    ];
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + process.env.OPENAI_API_KEY,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 1500,
-        messages: [
-          { role: "system", content: RECIPE_SYSTEM },
-          { role: "user", content: typeof userContent === "string" ? userContent : JSON.stringify(userContent) },
-        ],
-      }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + process.env.OPENAI_API_KEY },
+      body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 1500, messages }),
     });
-
     if (!response.ok) {
       const err = await response.json();
       throw new Error(err?.error?.message || "OpenAI error: " + response.status);
     }
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    return res.status(200).json({ content });
+    return res.status(200).json({ content: data.choices?.[0]?.message?.content || "" });
   } catch (error) {
-    console.error("AI API Error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
