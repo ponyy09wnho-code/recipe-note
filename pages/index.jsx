@@ -1013,13 +1013,14 @@ function AddScreen({onBack,onAdd,userName}){
   const [preview,setPreview]=useState(null);
   const [editPreview,setEditPreview]=useState(null);
   const [showTagEditor,setShowTagEditor]=useState(false);
+  const [fetchError,setFetchError]=useState("");
   const fileRef=useRef();
   const inS={padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
   if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
 
   const processExtract=async({imageFile,text})=>{
-    setLoading(true);setLoadingMsg(imageFile?"🤖 AI解析中...":"🔍 ページ取得中...");
+    setFetchError("");setLoading(true);setLoadingMsg(imageFile?"🤖 AI解析中...":"🔍 ページ取得中...");
     try{
       const data=await extractRecipe({imageFile,text});
       const base={...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)};
@@ -1029,7 +1030,7 @@ function AddScreen({onBack,onAdd,userName}){
       }
       setPreview(base);
       setEditPreview({title:base.title||"",description:base.description||"",emoji:base.emoji||"🍳",time:base.time||"",servings:String(parseInt(base.servings)||2),source:base.source||"",sourceUrl:base.sourceUrl||"",tags:[...(base.tags||[])],ingredients:(base.ingredients||[]).length>0?[...base.ingredients]:[{name:"",amount:""}],steps:(base.steps||[]).length>0?[...base.steps]:[""],tips:base.tips||"",nutrition:base.nutrition||null});
-    }catch(e){setToast("❌ "+e.message);}
+    }catch(e){setFetchError(e.message);}
     finally{setLoading(false);}
   };
 
@@ -1145,7 +1146,13 @@ function AddScreen({onBack,onAdd,userName}){
         )}
         {mode==="text"&&(
           <div>
-            <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+G.border,background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.6,display:"block",WebkitAppearance:"none"}}/>
+            <textarea value={textInput} onChange={e=>{setTextInput(e.target.value);setFetchError("");}} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+(fetchError?G.accent:G.border),background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.6,display:"block",WebkitAppearance:"none"}}/>
+            {fetchError&&(
+              <div style={{marginTop:10,padding:"12px 14px",borderRadius:12,background:"#e85a5a18",border:"1.5px solid #e85a5a55",color:"#f08888",fontSize:13,lineHeight:1.7}}>
+                <div style={{fontWeight:700,marginBottom:4}}>⚠️ 読み込みできませんでした</div>
+                <div>{fetchError}</div>
+              </div>
+            )}
             <button onClick={()=>processExtract({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:G.text,fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
           </div>
         )}
