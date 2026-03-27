@@ -6,20 +6,21 @@ const AUTH_KEY = "recipe-note-auth";
 const APP_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD || "";
 
 const G = {
-  dark:"#0a0a12", card:"#13132a", input:"#1a1a30", border:"#2a2a45",
-  text:"#f0eaff", sub:"#8888aa", accent:"#e8825a", accent2:"#c85a8a",
-  green:"#5ac87a", blue:"#5a9ee8", yellow:"#e8c05a", purple:"#8a5ac8",
+  dark:"#f5f2ff", card:"#ffffff", input:"#eeebfa", border:"#ddd5f5",
+  text:"#1e1640", sub:"#8070b0", accent:"#e8825a", accent2:"#c85a8a",
+  green:"#28a85a", blue:"#3a7ee8", yellow:"#b87c00", purple:"#7a3ac8",
+  overlay:"rgba(20,10,50,0.72)",
 };
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap');
 *,*::before,*::after{box-sizing:border-box!important;margin:0;padding:0}
-body{background:#0a0a12;color:#f0eaff;-webkit-text-size-adjust:100%}
+body{background:#f5f2ff;color:#1e1640;-webkit-text-size-adjust:100%}
 input,textarea,select,button{-webkit-appearance:none!important;appearance:none!important;font-family:inherit;background-clip:padding-box}
 input:focus,textarea:focus,button:focus{outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent!important}
 input[type=file]{display:none!important}
 ::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-thumb{background:#2a2a45;border-radius:4px}
+::-webkit-scrollbar-thumb{background:#ddd5f5;border-radius:4px}
 `;
 
 const toMs=(v)=>{if(!v)return 0;const d=new Date(v);return isNaN(d)?0:d.getTime();};
@@ -248,8 +249,8 @@ const tagColor=(t)=>PAL[Math.abs([...t].reduce((a,c)=>a+c.charCodeAt(0),0))%PAL.
 
 function ConfirmDialog({msg,onOk,onCancel}){
   return(
-    <div onClick={onCancel} style={{position:"fixed",inset:0,background:"#000c",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:20,padding:"24px 22px",maxWidth:320,width:"100%",border:"2px solid #e8825a66",boxShadow:"0 16px 48px #000a"}}>
+    <div onClick={onCancel} style={{position:"fixed",inset:0,background:G.overlay,zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:20,padding:"24px 22px",maxWidth:320,width:"100%",border:"2px solid #e8825a44",boxShadow:"0 16px 48px rgba(100,60,200,0.15)"}}>
         <div style={{fontSize:16,fontWeight:700,color:G.text,marginBottom:18,lineHeight:1.6}}>{msg}</div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onCancel} style={{flex:1,padding:"11px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>キャンセル</button>
@@ -302,7 +303,7 @@ function TagEditor({tags,onSave,onClose}){
     setTagCats(updated);saveTagCats(updated);
   };
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:G.overlay,zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"85vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{fontWeight:700,color:G.text,fontSize:16}}>🏷 タグを編集</div>
@@ -394,7 +395,7 @@ function TagManagement({recipes,onUpdateAll,onClose}){
   const deleteCat=(ci)=>{saveCat(tagCats.filter((_,i)=>i!==ci));};
 
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:1500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:G.overlay,zIndex:1500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       {confirmDelete&&<ConfirmDialog msg={"「"+confirmDelete+"」を全レシピから削除しますか？"} onOk={()=>deleteTag(confirmDelete)} onCancel={()=>setConfirmDelete(null)}/>}
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 44px",maxHeight:"90vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -464,7 +465,7 @@ function ShoppingList({recipe,onClose}){
   const allText=(recipe.ingredients||[]).map(ing=>ing.name+(ing.amount?" "+ing.amount:"")).join("\n");
   const copy=()=>{navigator.clipboard?.writeText(uncheckedText||allText);setCopied(true);setTimeout(()=>setCopied(false),2000);};
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:G.overlay,zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"80vh",overflowY:"auto",border:"2px solid "+G.green+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <div style={{fontWeight:700,color:G.text,fontSize:16}}>🛒 買い物リスト</div>
@@ -498,7 +499,7 @@ function ShareModal({recipe,onClose}){
   const url=encodeShareURL(recipe);
   const copy=()=>{navigator.clipboard?.writeText(url);setCopied(true);setTimeout(()=>setCopied(false),2000);};
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000c",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:G.overlay,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:20,padding:"22px",maxWidth:400,width:"100%",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div style={{fontWeight:700,color:G.text,fontSize:16}}>🔗 レシピを共有</div>
@@ -516,7 +517,7 @@ function ShareModal({recipe,onClose}){
 }
 function ImportBanner({recipe,onImport,onDismiss}){
   return(
-    <div style={{position:"fixed",top:0,left:0,right:0,background:"linear-gradient(135deg,#1e1a2e,#13132a)",borderBottom:"2px solid "+G.accent,padding:"14px 18px",zIndex:500,display:"flex",alignItems:"center",gap:10}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,background:"#fff",borderBottom:"2px solid "+G.accent,padding:"14px 18px",zIndex:500,display:"flex",alignItems:"center",gap:10,boxShadow:"0 4px 16px rgba(232,130,90,0.15)"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:13,fontWeight:700,color:G.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{"📥 "+recipe.title}</div>
         <div style={{fontSize:11,color:G.sub,marginTop:2}}>コレクションに追加しますか？</div>
@@ -563,7 +564,7 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
     <>
       {confirmDelete&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={()=>{setConfirmDelete(false);onDelete(recipe.id);}} onCancel={()=>setConfirmDelete(false)}/>}
       <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-        style={{background:G.card,border:"2px solid "+(hov?c1:G.border),borderRadius:20,overflow:"hidden",cursor:"pointer",position:"relative",transform:hov?"translateY(-6px) scale(1.02)":"translateY(0) scale(1)",boxShadow:hov?"0 16px 40px "+c1+"44":"0 4px 14px #0004",transition:"all 0.22s cubic-bezier(.34,1.56,.64,1)"}}>
+        style={{background:G.card,border:"1.5px solid "+(hov?c1:G.border),borderRadius:16,overflow:"hidden",cursor:"pointer",position:"relative",transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",boxShadow:hov?"0 12px 32px "+c1+"33":"0 2px 10px rgba(100,60,200,0.08)",transition:"all 0.2s cubic-bezier(.34,1.56,.64,1)"}}>
         <div style={{height:100,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"55,"+c2+"33)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:50,position:"relative"}}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
           <div style={{position:"absolute",top:7,left:7,display:"flex",gap:4}}>
@@ -572,8 +573,8 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
             {recipe.nutrition&&<span style={{background:"linear-gradient(135deg,#e8c05a,#c8a03a)",color:"#fff",borderRadius:20,padding:"2px 7px",fontSize:9,fontWeight:700}}>📊</span>}
           </div>
           <div style={{position:"absolute",top:7,right:7,display:"flex",gap:4}}>
-            <button onClick={e=>{e.stopPropagation();onToggleFav(recipe.id);}} style={{background:"#000a",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{recipe.favorite?"⭐":"☆"}</button>
-            {onDelete&&<button onClick={e=>{e.stopPropagation();setConfirmDelete(true);}} style={{background:"#000a",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",color:"#ccc",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
+            <button onClick={e=>{e.stopPropagation();onToggleFav(recipe.id);}} style={{background:"rgba(10,5,30,0.55)",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{recipe.favorite?"⭐":"☆"}</button>
+            {onDelete&&<button onClick={e=>{e.stopPropagation();setConfirmDelete(true);}} style={{background:"rgba(10,5,30,0.55)",border:"none",borderRadius:"50%",width:26,height:26,cursor:"pointer",color:"#ccc",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
           </div>
           {recipe.addedBy&&recipe.addedBy!==userName&&<span style={{position:"absolute",bottom:6,left:8,background:"#5a9ee888",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:9,fontWeight:700}}>{"👤 "+recipe.addedBy}</span>}
         </div>
@@ -662,7 +663,7 @@ function ImageCropper({src,onCrop,onCancel}){
   };
 
   return(
-    <div style={{position:"fixed",inset:0,background:"#000e",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{position:"fixed",inset:0,background:G.overlay,zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{width:"100%",maxWidth:500,background:G.card,borderRadius:20,overflow:"hidden",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid "+G.border}}>
           <div style={{fontWeight:700,color:G.text,fontSize:15}}>✂️ 写真をトリミング</div>
@@ -717,7 +718,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const inS={padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000d",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:G.overlay,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       {showTagEditor&&<TagEditor tags={editing?editData.tags:recipe.tags||[]} onSave={tags=>{if(editing)setEditData(d=>({...d,tags}));else onUpdate({...recipe,tags,updatedAt:new Date().toISOString()});setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
       {confirmDelComment&&<ConfirmDialog msg="この記録を削除しますか？" onOk={()=>{onUpdate({...recipe,comments:(recipe.comments||[]).filter(c=>c.id!==confirmDelComment),updatedAt:new Date().toISOString()});setConfirmDelComment(null);}} onCancel={()=>setConfirmDelComment(null)}/>}
       {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={async()=>{await deleteStoragePhotos(extractStoragePaths(recipe));onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
@@ -725,17 +726,17 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
       {showShopping&&<ShoppingList recipe={recipe} onClose={()=>setShowShopping(false)}/>}
       {cropSrc&&<ImageCropper src={cropSrc} onCrop={handleCroppedHero} onCancel={()=>setCropSrc(null)}/>}
 
-      <div onClick={e=>e.stopPropagation()} style={{background:G.dark,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 30px 80px #000c",border:"2px solid "+c1+"55"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(100,60,200,0.18)",border:"1.5px solid "+G.border}}>
         <div style={{height:150,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:82,borderRadius:"22px 22px 0 0",position:"relative"}}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
-          <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"#000a",border:"none",borderRadius:"50%",width:34,height:34,cursor:"pointer",color:"#fff",fontSize:16}}>✕</button>
+          <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(10,5,30,0.55)",border:"none",borderRadius:"50%",width:34,height:34,cursor:"pointer",color:"#fff",fontSize:16}}>✕</button>
           <input ref={heroRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)handleHeroPhoto(f);e.target.value="";}}/>
           <div style={{position:"absolute",bottom:10,left:12}}>
             <button onClick={incrementMade} style={{background:"linear-gradient(135deg,#5ac87a,#3aa85a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>{"🍳 作った！"+(recipe.madeCount>0?" ("+recipe.madeCount+")":"")}</button>
           </div>
           <div style={{position:"absolute",bottom:10,right:12,display:"flex",gap:5}}>
-            <button onClick={()=>heroRef.current?.click()} style={{background:"#000a",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>📷</button>
-            <button onClick={()=>setShowShare(true)} style={{background:"#000a",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>🔗</button>
+            <button onClick={()=>heroRef.current?.click()} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>📷</button>
+            <button onClick={()=>setShowShare(true)} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>🔗</button>
             <button onClick={startEdit} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>✏️ 編集</button>
           </div>
         </div>
@@ -788,7 +789,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                         <div style={{position:"relative"}}>
                           <img src={recipe.stepPhotos[i]} style={{width:"100%",borderRadius:10,maxHeight:160,objectFit:"cover"}}/>
                           <div style={{position:"absolute",bottom:6,right:6,display:"flex",gap:4}}>
-                            <button onClick={()=>stepRefs.current[i]?.click()} style={{background:"#000a",border:"1px solid #fff4",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>📷 変更</button>
+                            <button onClick={()=>stepRefs.current[i]?.click()} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #fff4",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>📷 変更</button>
                             <button onClick={()=>{const sp={...(recipe.stepPhotos||{})};delete sp[i];onUpdate({...recipe,stepPhotos:sp,updatedAt:new Date().toISOString()});}} style={{background:"#e85a5a88",border:"none",borderRadius:8,padding:"3px 8px",color:"#fff",fontSize:10,cursor:"pointer"}}>削除</button>
                           </div>
                         </div>
@@ -816,7 +817,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                   ))}
                 </div>
               </div>
-              <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #0a0a12 80%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
+              <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #f5f2ff 75%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
                 <button onClick={()=>setEditing(false)} style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>キャンセル</button>
                 <button onClick={saveEdit} style={{flex:2,padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>💾 保存する</button>
               </div>
@@ -893,7 +894,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                   {recipe.tips&&(
                     <div style={{background:G.card,borderRadius:14,padding:"12px 14px",marginTop:4,border:"1.5px solid #e8c05a44"}}>
                       <div style={{fontWeight:700,color:G.yellow,fontSize:13,marginBottom:6}}>💡 コツ・注意点</div>
-                      <div style={{fontSize:13,color:"#c0b8d0",lineHeight:1.75}}>{recipe.tips}</div>
+                      <div style={{fontSize:13,color:G.sub,lineHeight:1.75}}>{recipe.tips}</div>
                     </div>
                   )}
                 </div>
@@ -918,7 +919,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                             {c.author===userName&&<button onClick={()=>setConfirmDelComment(c.id)} style={{background:"none",border:"none",color:"#e85a5a",cursor:"pointer",fontSize:16}}>🗑</button>}
                           </div>
                           {c.photo&&<img src={c.photo} style={{width:"100%",borderRadius:10,marginBottom:c.text?9:0,maxHeight:240,objectFit:"cover"}}/>}
-                          {c.text&&<div style={{fontSize:13,color:"#c0b8d0",lineHeight:1.75}}>{c.text}</div>}
+                          {c.text&&<div style={{fontSize:13,color:G.text,lineHeight:1.75}}>{c.text}</div>}
                         </div>
                       ))}
                     </div>
@@ -930,7 +931,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                     {commentPhoto&&!photoLoading&&(
                       <div style={{position:"relative",marginBottom:10}}>
                         <img src={commentPhoto} style={{width:"100%",borderRadius:10,maxHeight:180,objectFit:"cover"}}/>
-                        <button onClick={()=>setCommentPhoto(null)} style={{position:"absolute",top:7,right:7,background:"#000b",border:"none",borderRadius:"50%",width:28,height:28,cursor:"pointer",color:"#fff",fontSize:14}}>✕</button>
+                        <button onClick={()=>setCommentPhoto(null)} style={{position:"absolute",top:7,right:7,background:"rgba(10,5,30,0.65)",border:"none",borderRadius:"50%",width:28,height:28,cursor:"pointer",color:"#fff",fontSize:14}}>✕</button>
                       </div>
                     )}
                     <input ref={photoRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)handleCommentPhoto(f);e.target.value="";}}/>
@@ -949,70 +950,6 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   );
 }
 
-function ManualForm({onAdd,onBack}){
-  const [title,setTitle]=useState(""),[description,setDescription]=useState(""),
-    [emoji,setEmoji]=useState("🍳"),[time,setTime]=useState(""),
-    [servings,setServings]=useState("2"),[source,setSource]=useState(""),
-    [tags,setTags]=useState([]),[ingredients,setIngredients]=useState([{name:"",amount:""}]),
-    [steps,setSteps]=useState([""]),[showTagEditor,setShowTagEditor]=useState(false),
-    [toast,setToast]=useState("");
-  const inS={padding:"11px 14px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:14,display:"block",width:"100%",marginBottom:10,WebkitAppearance:"none",appearance:"none"};
-  const submit=()=>{if(!title.trim()){setToast("⚠️ 料理名を入力してください");return;}onAdd({title:title.trim(),description:description.trim(),emoji,time:time.trim()||null,servings:servings?servings+"人分":null,source:source.trim()||"自作",sourceUrl:null,tags,ingredients:ingredients.filter(i=>i.name.trim()),steps:steps.filter(s=>s.trim()),comments:[]});};
-  return(
-    <div style={{minHeight:"100vh",background:G.dark,padding:24}}>
-      <style>{CSS}</style>
-      {showTagEditor&&<TagEditor tags={tags} onSave={t=>{setTags(t);setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
-      <div style={{maxWidth:500,margin:"0 auto"}}>
-        <button onClick={onBack} style={{background:"none",border:"none",color:G.accent,fontSize:14,cursor:"pointer",padding:0,marginBottom:20}}>← 戻る</button>
-        <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:22,fontWeight:900,color:G.text,marginBottom:20}}>✍️ レシピを手書き</div>
-        <div style={{display:"flex",gap:10}}>
-          <div><div style={{fontSize:12,color:G.sub,marginBottom:6}}>絵文字</div><input value={emoji} onChange={e=>setEmoji(e.target.value)} style={{...inS,width:60,textAlign:"center",fontSize:24,padding:"8px"}}/></div>
-          <div style={{flex:1}}><div style={{fontSize:12,color:G.sub,marginBottom:6}}>料理名 *</div><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="例：唐揚げ" style={inS}/></div>
-        </div>
-        <div style={{fontSize:12,color:G.sub,marginBottom:6}}>一言説明</div>
-        <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="例：サクサクジューシー！" style={inS}/>
-        <div style={{display:"flex",gap:10}}>
-          <div style={{flex:1}}><div style={{fontSize:12,color:G.sub,marginBottom:6}}>⏱ 調理時間</div><input value={time} onChange={e=>setTime(e.target.value)} placeholder="30分" style={inS}/></div>
-          <div style={{flex:1}}><div style={{fontSize:12,color:G.sub,marginBottom:6}}>👥 人数</div><input value={servings} onChange={e=>setServings(e.target.value)} placeholder="2" type="number" min="1" style={inS}/></div>
-        </div>
-        <div style={{fontSize:12,color:G.sub,marginBottom:6}}>📌 出典・SNS</div>
-        <input value={source} onChange={e=>setSource(e.target.value)} placeholder="例：自作 / Instagram" style={inS}/>
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>🏷 タグ</div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            {tags.map((t,i)=><Tag key={i} label={t} active onRemove={()=>setTags(tags.filter((_,idx)=>idx!==i))}/>)}
-            <button onClick={()=>setShowTagEditor(true)} style={{background:G.accent+"22",border:"1.5px dashed "+G.accent+"88",borderRadius:20,padding:"3px 10px",color:G.accent,fontSize:11,fontWeight:700,cursor:"pointer"}}>＋ タグを追加</button>
-          </div>
-        </div>
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>🥘 材料</div>
-          {ingredients.map((ing,i)=>(
-            <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
-              <input value={ing.name} onChange={e=>{const a=[...ingredients];a[i]={...a[i],name:e.target.value};setIngredients(a);}} placeholder="材料名" style={{flex:2,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
-              <input value={ing.amount} onChange={e=>{const a=[...ingredients];a[i]={...a[i],amount:e.target.value};setIngredients(a);}} placeholder="分量" style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
-              <button onClick={()=>setIngredients(ingredients.filter((_,idx)=>idx!==i))} style={{background:G.input,border:"1.5px solid "+G.border,borderRadius:8,width:36,height:36,color:G.sub,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
-            </div>
-          ))}
-          <button onClick={()=>setIngredients([...ingredients,{name:"",amount:""}])} style={{width:"100%",padding:9,borderRadius:10,border:"1.5px dashed "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer"}}>＋ 材料を追加</button>
-        </div>
-        <div style={{marginBottom:24}}>
-          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>👨‍🍳 作り方</div>
-          {steps.map((step,i)=>(
-            <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-start"}}>
-              <div style={{background:"linear-gradient(135deg,#5ac87a,#3aa85a)",color:"#fff",borderRadius:"50%",minWidth:26,height:26,marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{i+1}</div>
-              <textarea value={step} onChange={e=>{const a=[...steps];a[i]=e.target.value;setSteps(a);}} placeholder={"手順 "+(i+1)} rows={2} style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,resize:"vertical",WebkitAppearance:"none"}}/>
-              <button onClick={()=>setSteps(steps.filter((_,idx)=>idx!==i))} style={{background:G.input,border:"1.5px solid "+G.border,borderRadius:8,width:36,height:36,marginTop:4,color:G.sub,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
-            </div>
-          ))}
-          <button onClick={()=>setSteps([...steps,""])} style={{width:"100%",padding:9,borderRadius:10,border:"1.5px dashed "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer"}}>＋ 手順を追加</button>
-        </div>
-        <button onClick={submit} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",background:title.trim()?"linear-gradient(135deg,#e8825a,#c8603a)":G.input,color:G.text,fontSize:15,fontWeight:700,cursor:title.trim()?"pointer":"default",boxShadow:title.trim()?"0 4px 16px #e8825a44":"none"}}>🍳 レシピを保存</button>
-      </div>
-      <Toast msg={toast} onClear={()=>setToast("")}/>
-    </div>
-  );
-}
-
 function AddScreen({onBack,onAdd,userName}){
   const [mode,setMode]=useState("image");
   const [textInput,setTextInput]=useState("");
@@ -1027,8 +964,6 @@ function AddScreen({onBack,onAdd,userName}){
   const [previews,setPreviews]=useState([]);
   const fileRef=useRef();
   const inS={padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
-
-  if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
 
   const addFiles=(files)=>{
     const arr=Array.from(files).slice(0,4-selectedFiles.length);
@@ -1136,7 +1071,7 @@ function AddScreen({onBack,onAdd,userName}){
           </div>
         )}
       </div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #0a0a12 80%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #f5f2ff 75%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
         <button onClick={()=>setPreview(null)} style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>← 戻る</button>
         <button onClick={confirmAdd} style={{flex:2,padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>🍳 登録する</button>
       </div>
@@ -1145,25 +1080,25 @@ function AddScreen({onBack,onAdd,userName}){
   );
 
   return(
-    <div style={{minHeight:"100vh",background:G.dark,padding:24}}>
+    <div style={{minHeight:"100vh",background:G.dark,padding:"24px 20px"}}>
       <style>{CSS}</style>
       <div style={{maxWidth:500,margin:"0 auto"}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:G.accent,fontSize:14,cursor:"pointer",padding:0,marginBottom:22}}>← 戻る</button>
         <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:22,fontWeight:900,color:G.text,marginBottom:20}}>レシピを追加</div>
         <div style={{display:"flex",background:G.card,borderRadius:14,padding:4,marginBottom:22,gap:3,border:"1.5px solid "+G.border}}>
           {[{id:"image",label:"📸 スクショ"},{id:"text",label:"🔗 URL"},{id:"manual",label:"✍️ 手書き"}].map(m=>(
-            <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1,padding:"10px 6px",borderRadius:11,border:"none",background:mode===m.id?"linear-gradient(135deg,#e8825a,#c8603a)":"transparent",color:mode===m.id?"#fff":G.sub,fontWeight:mode===m.id?700:400,cursor:"pointer",fontSize:12}}>{m.label}</button>
+            <button key={m.id} onClick={()=>{setMode(m.id);setTextInput("");setFetchError("");setSelectedFiles([]);setPreviews([]);}} style={{flex:1,padding:"10px 6px",borderRadius:11,border:"none",background:mode===m.id?"linear-gradient(135deg,#e8825a,#c8603a)":"transparent",color:mode===m.id?"#fff":G.sub,fontWeight:mode===m.id?700:400,cursor:"pointer",fontSize:12}}>{m.label}</button>
           ))}
         </div>
         {mode==="image"&&(
           <div>
             <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{addFiles(e.target.files);e.target.value="";}}/>
             {loading?(
-              <div style={{border:"2px solid "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
+              <div style={{border:"2px solid "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",background:"linear-gradient(135deg,#f0ecfa,#e8e3f5)"}}>
                 <Loader msg={loadingMsg}/>
               </div>
             ):selectedFiles.length===0?(
-              <div onClick={()=>fileRef.current?.click()} style={{border:"2px dashed "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",cursor:"pointer",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
+              <div onClick={()=>fileRef.current?.click()} style={{border:"2px dashed "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",cursor:"pointer",background:"linear-gradient(135deg,#f0ecfa,#e8e3f5)"}}>
                 <div style={{fontSize:52,marginBottom:14}}>📷</div>
                 <div style={{color:G.text,fontWeight:700,marginBottom:6,fontSize:15}}>レシピ画像を選択</div>
                 <div style={{color:G.sub,fontSize:13,lineHeight:1.9}}>複数枚（最大4枚）まとめて選択できます<br/>材料・手順が別ページでも統合して読み取ります</div>
@@ -1175,8 +1110,8 @@ function AddScreen({onBack,onAdd,userName}){
                   {previews.map((src,i)=>(
                     <div key={i} style={{position:"relative",borderRadius:12,overflow:"hidden",aspectRatio:"1",background:G.card,border:"1.5px solid "+G.border}}>
                       <img src={src} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                      <button onClick={()=>removeFile(i)} style={{position:"absolute",top:6,right:6,background:"#000b",border:"none",borderRadius:"50%",width:26,height:26,color:"#fff",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                      <div style={{position:"absolute",bottom:6,left:8,background:"#000b",borderRadius:8,padding:"2px 8px",color:"#fff",fontSize:11,fontWeight:700}}>{i+1}枚目</div>
+                      <button onClick={()=>removeFile(i)} style={{position:"absolute",top:6,right:6,background:"rgba(10,5,30,0.65)",border:"none",borderRadius:"50%",width:26,height:26,color:"#fff",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      <div style={{position:"absolute",bottom:6,left:8,background:"rgba(10,5,30,0.65)",borderRadius:8,padding:"2px 8px",color:"#fff",fontSize:11,fontWeight:700}}>{i+1}枚目</div>
                     </div>
                   ))}
                   {selectedFiles.length<4&&(
@@ -1202,16 +1137,31 @@ function AddScreen({onBack,onAdd,userName}){
             )}
           </div>
         )}
-        {mode==="text"&&(
+        {mode==="manual"&&(
           <div>
-            <textarea value={textInput} onChange={e=>{setTextInput(e.target.value);setFetchError("");}} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+(fetchError?G.accent:G.border),background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.6,display:"block",WebkitAppearance:"none"}}/>
+            <div style={{background:G.input,borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,color:G.sub,lineHeight:1.8}}>
+              料理名・材料・手順など、思いつくままに書いてください。<br/>AIが自動で整理して登録フォームに入力します。
+            </div>
+            <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"例：\n唐揚げ  2人分  30分\n\n材料\n鶏もも肉 300g\n醤油 大さじ2\nにんにく 1片\n片栗粉 大さじ3\n\n作り方\n1. 鶏肉を一口大に切る\n2. 調味料に30分漬ける\n3. 180度の油で揚げる\n\nコツ：揚げすぎに注意"} rows={14} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+G.border,background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.7,display:"block",WebkitAppearance:"none"}}/>
             {fetchError&&(
-              <div style={{marginTop:10,padding:"12px 14px",borderRadius:12,background:"#e85a5a18",border:"1.5px solid #e85a5a55",color:"#f08888",fontSize:13,lineHeight:1.7}}>
+              <div style={{marginTop:10,padding:"12px 14px",borderRadius:12,background:"#e85a5a11",border:"1.5px solid #e85a5a44",color:"#c03030",fontSize:13,lineHeight:1.7}}>
                 <div style={{fontWeight:700,marginBottom:4}}>⚠️ 読み込みできませんでした</div>
                 <div>{fetchError}</div>
               </div>
             )}
-            <button onClick={()=>processExtract({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:G.text,fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
+            <button onClick={()=>processExtract({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:loading||!textInput.trim()?G.sub:"#fff",fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer",boxShadow:loading||!textInput.trim()?"none":"0 4px 16px #e8825a33"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIで整理する"}</button>
+          </div>
+        )}
+        {mode==="text"&&(
+          <div>
+            <textarea value={textInput} onChange={e=>{setTextInput(e.target.value);setFetchError("");}} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+(fetchError?G.accent:G.border),background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.6,display:"block",WebkitAppearance:"none"}}/>
+            {fetchError&&(
+              <div style={{marginTop:10,padding:"12px 14px",borderRadius:12,background:"#e85a5a11",border:"1.5px solid #e85a5a44",color:"#c03030",fontSize:13,lineHeight:1.7}}>
+                <div style={{fontWeight:700,marginBottom:4}}>⚠️ 読み込みできませんでした</div>
+                <div>{fetchError}</div>
+              </div>
+            )}
+            <button onClick={()=>processExtract({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:loading||!textInput.trim()?G.sub:"#fff",fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer",boxShadow:loading||!textInput.trim()?"none":"0 4px 16px #e8825a33"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
           </div>
         )}
       </div>
@@ -1370,7 +1320,7 @@ export default function App(){
   const syncIcon=syncStatus==="syncing"?"⏳":syncStatus==="ok"?"✅":syncStatus==="error"?"❌":"🔄";
 
   if(!authed)return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f5f2ff,#ece7ff)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{CSS}</style>
       <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:64,marginBottom:12}}>🔒</div>
@@ -1384,7 +1334,7 @@ export default function App(){
   );
 
   if(!userName)return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+G.dark+",#1a1a2e)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f5f2ff,#ece7ff)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{CSS}</style>
       <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:72,marginBottom:8}}>🍳</div>
@@ -1405,7 +1355,7 @@ export default function App(){
       {showTagManagement&&<TagManagement recipes={recipes} onUpdateAll={handleUpdateAll} onClose={()=>setShowTagManagement(false)}/>}
 
       {showHistory&&(
-        <div onClick={()=>setShowHistory(false)} style={{position:"fixed",inset:0,background:"#000c",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+        <div onClick={()=>setShowHistory(false)} style={{position:"fixed",inset:0,background:G.overlay,zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
           <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 40px",maxHeight:"60vh",overflowY:"auto",border:"2px solid "+G.border}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div style={{fontWeight:700,color:G.text,fontSize:16}}>🕐 最近見たレシピ</div>
@@ -1429,7 +1379,7 @@ export default function App(){
         </div>
       )}
 
-      <div style={{background:"linear-gradient(135deg,#13132a,#1e1a2e)",borderBottom:"2px solid "+G.accent+"44",padding:"14px 18px 16px",position:"sticky",top:sharedRecipe?56:0,zIndex:100}}>
+      <div style={{background:"linear-gradient(180deg,#ffffff,#f8f5ff)",borderBottom:"1.5px solid "+G.border,padding:"12px 18px 14px",position:"sticky",top:sharedRecipe?56:0,zIndex:100,boxShadow:"0 2px 12px rgba(100,60,200,0.07)"}}>
         <div style={{maxWidth:740,margin:"0 auto"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div>
