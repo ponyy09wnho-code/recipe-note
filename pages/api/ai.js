@@ -141,17 +141,29 @@ export default async function handler(req, res) {
       }
     }
 
+    // 複数画像対応: imagesBase64 配列があればそちらを使う
+    const { imagesBase64 } = req.body;
+    let userContent;
+    if (imagesBase64 && imagesBase64.length > 0) {
+      userContent = [
+        ...imagesBase64.map(img => ({
+          type: "image_url",
+          image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
+        })),
+        { type: "text", text: finalPrompt },
+      ];
+    } else if (imageBase64) {
+      userContent = [
+        { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } },
+        { type: "text", text: finalPrompt },
+      ];
+    } else {
+      userContent = finalPrompt;
+    }
+
     const messages = [
       { role: "system", content: RECIPE_SYSTEM },
-      {
-        role: "user",
-        content: imageBase64
-          ? [
-              { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } },
-              { type: "text", text: finalPrompt },
-            ]
-          : finalPrompt,
-      },
+      { role: "user", content: userContent },
     ];
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {

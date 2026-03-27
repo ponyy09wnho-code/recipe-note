@@ -109,15 +109,24 @@ function extractStoragePaths(recipe){
   return paths;
 }
 
-async function extractRecipe({imageFile,text}){
-  let imageBase64=null,imageMediaType=null;
-  if(imageFile){
-    const compressed=await compressForAI(imageFile);
-    imageBase64=compressed.base64;
-    imageMediaType=compressed.mediaType;
+async function extractRecipe({imageFile,imageFiles,text}){
+  // 複数画像の場合
+  const files=imageFiles||(imageFile?[imageFile]:null);
+  if(files&&files.length>0){
+    const compressed=await Promise.all(files.map(f=>compressForAI(f)));
+    const prompt=files.length>1
+      ?`${files.length}枚の画像を合わせて1つのレシピとして抽出してください。材料・手順が複数枚に分かれている場合は統合してください。`
+      :"この画像からレシピ情報を抽出してください。";
+    const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imagesBase64:compressed,imageBase64:null,imageMediaType:null})});
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error||"エラー");}
+    const data=await res.json();
+    const parsed=parseJSONRobust(data.content);
+    if(!parsed)throw new Error("解析失敗。別の画像をお試しください。");
+    return parsed;
   }
-  const prompt=imageFile?"この画像からレシピ情報を抽出してください。":"以下からレシピを抽出してください:\n\n"+text;
-  const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imageBase64,imageMediaType})});
+  // テキスト・URLの場合（従来通り）
+  const prompt="以下からレシピを抽出してください:\n\n"+text;
+  const res=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt,imageBase64:null,imageMediaType:null})});
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error||"エラー");}
   const data=await res.json();
   const parsed=parseJSONRobust(data.content);
@@ -1014,15 +1023,32 @@ function AddScreen({onBack,onAdd,userName}){
   const [editPreview,setEditPreview]=useState(null);
   const [showTagEditor,setShowTagEditor]=useState(false);
   const [fetchError,setFetchError]=useState("");
+  const [selectedFiles,setSelectedFiles]=useState([]);
+  const [previews,setPreviews]=useState([]);
   const fileRef=useRef();
   const inS={padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
 
   if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
 
-  const processExtract=async({imageFile,text})=>{
-    setFetchError("");setLoading(true);setLoadingMsg(imageFile?"🤖 AI解析中...":"🔍 ページ取得中...");
+  const addFiles=(files)=>{
+    const arr=Array.from(files).slice(0,4-selectedFiles.length);
+    if(!arr.length)return;
+    const newFiles=[...selectedFiles,...arr].slice(0,4);
+    setSelectedFiles(newFiles);
+    // サムネイル生成
+    Promise.all(newFiles.map(f=>new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);}))).then(setPreviews);
+  };
+  const removeFile=(i)=>{
+    const nf=selectedFiles.filter((_,idx)=>idx!==i);
+    setSelectedFiles(nf);
+    Promise.all(nf.map(f=>new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);}))).then(setPreviews);
+  };
+
+  const processExtract=async({imageFiles,text})=>{
+    setFetchError("");setLoading(true);
+    setLoadingMsg(imageFiles?(imageFiles.length>1?`🤖 ${imageFiles.length}枚をまとめて解析中...`:"🤖 AI解析中..."):"🔍 ページ取得中...");
     try{
-      const data=await extractRecipe({imageFile,text});
+      const data=await extractRecipe({imageFiles,text});
       const base={...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)};
       if(!base.nutrition&&base.ingredients?.length){
         setLoadingMsg("📊 栄養素を推定中...");
@@ -1131,17 +1157,49 @@ function AddScreen({onBack,onAdd,userName}){
         </div>
         {mode==="image"&&(
           <div>
-            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)processExtract({imageFile:f});e.target.value="";}}/>
-            <div onClick={()=>!loading&&fileRef.current?.click()} style={{border:"2px solid "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",cursor:loading?"default":"pointer",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
-              {loading?<Loader msg={loadingMsg}/>:(
-                <div>
-                  <div style={{fontSize:52,marginBottom:14}}>📱</div>
-                  <div style={{color:G.text,fontWeight:700,marginBottom:6,fontSize:15}}>レシピ画像をアップロード</div>
-                  <div style={{color:G.sub,fontSize:13,lineHeight:1.8}}>SNSのスクショや料理写真をタップ</div>
-                  <div style={{marginTop:18,display:"inline-flex",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",borderRadius:12,padding:"10px 24px",fontSize:13,fontWeight:700,boxShadow:"0 4px 16px #e8825a44"}}>📂 ファイルを選択</div>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{addFiles(e.target.files);e.target.value="";}}/>
+            {loading?(
+              <div style={{border:"2px solid "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
+                <Loader msg={loadingMsg}/>
+              </div>
+            ):selectedFiles.length===0?(
+              <div onClick={()=>fileRef.current?.click()} style={{border:"2px dashed "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",cursor:"pointer",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
+                <div style={{fontSize:52,marginBottom:14}}>📷</div>
+                <div style={{color:G.text,fontWeight:700,marginBottom:6,fontSize:15}}>レシピ画像を選択</div>
+                <div style={{color:G.sub,fontSize:13,lineHeight:1.9}}>複数枚（最大4枚）まとめて選択できます<br/>材料・手順が別ページでも統合して読み取ります</div>
+                <div style={{marginTop:18,display:"inline-flex",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",borderRadius:12,padding:"10px 24px",fontSize:13,fontWeight:700,boxShadow:"0 4px 16px #e8825a44"}}>📂 写真を選ぶ</div>
+              </div>
+            ):(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:12}}>
+                  {previews.map((src,i)=>(
+                    <div key={i} style={{position:"relative",borderRadius:12,overflow:"hidden",aspectRatio:"1",background:G.card,border:"1.5px solid "+G.border}}>
+                      <img src={src} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <button onClick={()=>removeFile(i)} style={{position:"absolute",top:6,right:6,background:"#000b",border:"none",borderRadius:"50%",width:26,height:26,color:"#fff",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      <div style={{position:"absolute",bottom:6,left:8,background:"#000b",borderRadius:8,padding:"2px 8px",color:"#fff",fontSize:11,fontWeight:700}}>{i+1}枚目</div>
+                    </div>
+                  ))}
+                  {selectedFiles.length<4&&(
+                    <div onClick={()=>fileRef.current?.click()} style={{borderRadius:12,aspectRatio:"1",background:G.input,border:"2px dashed "+G.border,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:6}}>
+                      <div style={{fontSize:28,color:G.sub}}>＋</div>
+                      <div style={{fontSize:11,color:G.sub}}>追加</div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+                <div style={{fontSize:12,color:G.sub,textAlign:"center",marginBottom:12}}>
+                  {selectedFiles.length}枚選択済み{selectedFiles.length>1&&" — まとめて1つのレシピとして読み取ります"}
+                </div>
+                {fetchError&&(
+                  <div style={{marginBottom:12,padding:"12px 14px",borderRadius:12,background:"#e85a5a18",border:"1.5px solid #e85a5a55",color:"#f08888",fontSize:13,lineHeight:1.7}}>
+                    <div style={{fontWeight:700,marginBottom:4}}>⚠️ 読み込みできませんでした</div>
+                    <div>{fetchError}</div>
+                  </div>
+                )}
+                <button onClick={()=>processExtract({imageFiles:selectedFiles})} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px #e8825a44"}}>
+                  🤖 {selectedFiles.length}枚をAIで解析する
+                </button>
+              </div>
+            )}
           </div>
         )}
         {mode==="text"&&(
