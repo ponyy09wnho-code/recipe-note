@@ -701,6 +701,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const [showShare,setShowShare]=useState(false);
   const [showShopping,setShowShopping]=useState(false);
   const [cropSrc,setCropSrc]=useState(null);
+  const [showActionMenu,setShowActionMenu]=useState(false);
   const [servings,setServings]=useState(()=>{const n=parseInt(recipe.servings);return isNaN(n)?2:n;});
   const base=parseInt(recipe.servings)||2;
   const scale=servings/base;
@@ -726,7 +727,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
       {showShopping&&<ShoppingList recipe={recipe} onClose={()=>setShowShopping(false)}/>}
       {cropSrc&&<ImageCropper src={cropSrc} onCrop={handleCroppedHero} onCancel={()=>setCropSrc(null)}/>}
 
-      <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(100,60,200,0.18)",border:"1.5px solid "+G.border}}>
+      <div onClick={e=>{e.stopPropagation();setShowActionMenu(false);}} style={{background:G.card,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(100,60,200,0.18)",border:"1.5px solid "+G.border}}>
         <div style={{height:150,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:82,borderRadius:"22px 22px 0 0",position:"relative"}}>
           {!recipe.photo&&(recipe.emoji||"🍽️")}
           <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(10,5,30,0.55)",border:"none",borderRadius:"50%",width:34,height:34,cursor:"pointer",color:"#fff",fontSize:16}}>✕</button>
@@ -734,10 +735,21 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
           <div style={{position:"absolute",bottom:10,left:12}}>
             <button onClick={incrementMade} style={{background:"linear-gradient(135deg,#5ac87a,#3aa85a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>{"🍳 作った！"+(recipe.madeCount>0?" ("+recipe.madeCount+")":"")}</button>
           </div>
-          <div style={{position:"absolute",bottom:10,right:12,display:"flex",gap:5}}>
-            <button onClick={()=>heroRef.current?.click()} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>📷</button>
-            <button onClick={()=>setShowShare(true)} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer"}}>🔗</button>
-            <button onClick={startEdit} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:10,padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>✏️ 編集</button>
+          <div style={{position:"absolute",bottom:10,right:12}}>
+            <button onClick={e=>{e.stopPropagation();setShowActionMenu(m=>!m);}} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 12px",color:"#fff",fontSize:16,cursor:"pointer",fontWeight:700,letterSpacing:1}}>•••</button>
+            {showActionMenu&&(
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:40,right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:20,overflow:"hidden",minWidth:150}}>
+                {[
+                  {icon:"✏️",label:"編集",action:()=>{startEdit();}},
+                  {icon:"📷",label:"写真を変更",action:()=>{heroRef.current?.click();}},
+                  {icon:"🔗",label:"シェア",action:()=>{setShowShare(true);}},
+                  {icon:"📋",label:"コピー",action:()=>{onCopy(recipe);}},
+                  {icon:"🗑",label:"削除",action:()=>{setConfirmDelRecipe(true);},danger:true},
+                ].map(item=>(
+                  <button key={item.label} onClick={()=>{item.action();setShowActionMenu(false);}} style={{display:"block",width:"100%",padding:"11px 16px",border:"none",background:"transparent",color:item.danger?"#e85a5a":G.text,fontSize:13,cursor:"pointer",textAlign:"left",borderBottom:"1px solid "+G.border+"55"}}>{item.icon} {item.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -824,12 +836,8 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
             </div>
           ):(
             <div>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,gap:8}}>
-                <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:22,fontWeight:900,color:G.text,lineHeight:1.2,flex:1}}>{recipe.title}</div>
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <button onClick={()=>onCopy(recipe)} style={{background:G.blue+"22",border:"none",color:G.blue,cursor:"pointer",fontSize:13,padding:"4px 8px",borderRadius:8,fontWeight:700}}>📋 コピー</button>
-                  <button onClick={()=>setConfirmDelRecipe(true)} style={{background:"none",border:"none",color:"#e85a5a",cursor:"pointer",fontSize:16,padding:"4px"}}>🗑</button>
-                </div>
+              <div style={{marginBottom:4}}>
+                <div style={{fontFamily:"'Zen Kaku Gothic New',sans-serif",fontSize:22,fontWeight:900,color:G.text,lineHeight:1.2}}>{recipe.title}</div>
               </div>
               <div style={{color:G.sub,fontSize:13,marginBottom:10}}>{recipe.description}</div>
               {recipe.lastMade&&<div style={{fontSize:11,color:G.green,marginBottom:10}}>{"✅ 最終調理: "+recipe.lastMade+(recipe.madeCount>1?" ("+recipe.madeCount+"回)":"")}</div>}
@@ -1189,6 +1197,7 @@ export default function App(){
   const [filterFav,setFilterFav]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
   const [showTagManagement,setShowTagManagement]=useState(false);
+  const [showHomeMenu,setShowHomeMenu]=useState(false);
   const [history,setHistory]=useState([]);
   const [toast,setToast]=useState("");
   const [sharedRecipe,setSharedRecipe]=useState(null);
@@ -1349,7 +1358,7 @@ export default function App(){
   if(view==="add")return <AddScreen onBack={()=>setView("home")} onAdd={handleAdd} userName={userName}/>;
 
   return(
-    <div style={{minHeight:"100vh",background:G.dark}}>
+    <div onClick={()=>setShowHomeMenu(false)} style={{minHeight:"100vh",background:G.dark}}>
       <style>{CSS}</style>
       {sharedRecipe&&<ImportBanner recipe={sharedRecipe} onImport={()=>{handleAdd({...sharedRecipe,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),comments:[]});setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}} onDismiss={()=>{setSharedRecipe(null);window.history.replaceState({},"",window.location.pathname);}}/>}
       {showTagManagement&&<TagManagement recipes={recipes} onUpdateAll={handleUpdateAll} onClose={()=>setShowTagManagement(false)}/>}
@@ -1391,8 +1400,15 @@ export default function App(){
               </div>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <button onClick={()=>setShowHistory(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:G.sub,cursor:"pointer",fontSize:16}}>🕐</button>
-              <button onClick={()=>setShowTagManagement(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:G.sub,cursor:"pointer",fontSize:16}}>🏷</button>
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setShowHomeMenu(m=>!m)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 12px",color:G.sub,cursor:"pointer",fontSize:15,fontWeight:700}}>☰</button>
+                {showHomeMenu&&(
+                  <div style={{position:"absolute",top:44,right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:200,overflow:"hidden",minWidth:150}}>
+                    <button onClick={()=>{setShowHistory(true);setShowHomeMenu(false);}} style={{display:"block",width:"100%",padding:"11px 16px",border:"none",borderBottom:"1px solid "+G.border+"55",background:"transparent",color:G.text,fontSize:13,cursor:"pointer",textAlign:"left"}}>🕐 閲覧履歴</button>
+                    <button onClick={()=>{setShowTagManagement(true);setShowHomeMenu(false);}} style={{display:"block",width:"100%",padding:"11px 16px",border:"none",background:"transparent",color:G.text,fontSize:13,cursor:"pointer",textAlign:"left"}}>🏷 タグ管理</button>
+                  </div>
+                )}
+              </div>
               <button onClick={()=>syncData(true)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 10px",color:syncStatus==="ok"?G.green:syncStatus==="error"?"#e85a5a":G.sub,cursor:"pointer",fontSize:14}}>{syncIcon}</button>
               <button onClick={()=>setView("add")} style={{background:"linear-gradient(135deg,#e8825a,#c8603a)",border:"none",borderRadius:12,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 4px 16px #e8825a44"}}>＋</button>
             </div>
