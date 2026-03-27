@@ -389,35 +389,11 @@ function TagManagement({recipes,onUpdateAll,onClose}){
       {confirmDelete&&<ConfirmDialog msg={"「"+confirmDelete+"」を全レシピから削除しますか？"} onOk={()=>deleteTag(confirmDelete)} onCancel={()=>setConfirmDelete(null)}/>}
       <div onClick={e=>e.stopPropagation()} style={{background:G.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:540,padding:"20px 20px 44px",maxHeight:"90vh",overflowY:"auto",border:"2px solid "+G.accent+"44"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-          <div style={{fontWeight:700,color:G.text,fontSize:17}}>🏷 タグ管理</div>
+          <div style={{fontWeight:700,color:G.text,fontSize:17}}>🏷 タグ編集</div>
           <button onClick={onClose} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{fontSize:12,color:G.sub,marginBottom:16}}>使用中のタグ一覧・カテゴリの編集ができます</div>
-        <div style={{background:G.input,borderRadius:14,padding:14,marginBottom:16,border:"1.5px solid "+G.border}}>
-          <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📊 使用中のタグ（{tagMap.size}種）</div>
-          {tagMap.size===0?(
-            <div style={{textAlign:"center",color:G.sub,fontSize:12,padding:"8px 0"}}>タグがありません</div>
-          ):(
-            [...tagMap.entries()].map(([tag,count])=>(
-              <div key={tag} style={{marginBottom:6}}>
-                {editingTag===tag?(
-                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <input value={editValue} onChange={e=>setEditValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameTag(tag,editValue);if(e.key==="Escape")setEditingTag(null);}} autoFocus style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid "+G.accent,background:G.dark,color:G.text,fontSize:13,WebkitAppearance:"none"}}/>
-                    <button onClick={()=>renameTag(tag,editValue)} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>変更</button>
-                    <button onClick={()=>setEditingTag(null)} style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:12,cursor:"pointer"}}>✕</button>
-                  </div>
-                ):(
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}><Tag label={tag}/><span style={{fontSize:10,color:G.sub}}>{count}品</span></div>
-                    <button onClick={()=>{setEditingTag(tag);setEditValue(tag);}} style={{padding:"4px 10px",borderRadius:7,border:"1.5px solid "+G.border,background:G.dark,color:G.sub,fontSize:11,cursor:"pointer"}}>編集</button>
-                    <button onClick={()=>setConfirmDelete(tag)} style={{padding:"4px 10px",borderRadius:7,border:"none",background:"#e85a5a22",color:"#e85a5a",fontSize:11,cursor:"pointer",fontWeight:700}}>削除</button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-        <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📂 カテゴリ管理</div>
+        <div style={{fontSize:12,color:G.sub,marginBottom:16}}>カテゴリ・タグの追加・編集・削除ができます</div>
+        <div style={{fontWeight:700,color:G.text,fontSize:13,marginBottom:10}}>📂 カテゴリ一覧</div>
         {tagCats.map((cat,ci)=>(
           <div key={ci} style={{marginBottom:8,border:"1.5px solid "+G.border,borderRadius:12,overflow:"hidden"}}>
             <div style={{display:"flex",alignItems:"center",background:G.input}}>
@@ -606,6 +582,102 @@ function RecipeCard({recipe,onClick,onDelete,onToggleFav,userName}){
   );
 }
 
+function ImageCropper({src,onCrop,onCancel}){
+  const canvasRef=useRef();
+  const [aspect,setAspect]=useState("1:1");
+  const [drag,setDrag]=useState(null);
+  const [crop,setCrop]=useState({x:0,y:0,w:0,h:0});
+  const imgRef=useRef(new Image());
+  const [imgLoaded,setImgLoaded]=useState(false);
+  const ASPECTS={"1:1":1,"16:9":16/9,"3:4":3/4};
+
+  useEffect(()=>{
+    const img=imgRef.current;
+    img.onload=()=>{setImgLoaded(true);};
+    img.src=src;
+  },[src]);
+
+  useEffect(()=>{
+    if(!imgLoaded||!canvasRef.current)return;
+    const canvas=canvasRef.current;
+    const img=imgRef.current;
+    const maxW=Math.min(window.innerWidth-48,480);
+    const scale=maxW/img.naturalWidth;
+    canvas.width=maxW;
+    canvas.height=img.naturalHeight*scale;
+    const ar=ASPECTS[aspect];
+    let cw,ch;
+    if(canvas.width/canvas.height>ar){ch=canvas.height*0.85;cw=ch*ar;}
+    else{cw=canvas.width*0.85;ch=cw/ar;}
+    const cx=(canvas.width-cw)/2,cy=(canvas.height-ch)/2;
+    setCrop({x:cx,y:cy,w:cw,h:ch});
+  },[imgLoaded,aspect]);
+
+  useEffect(()=>{
+    if(!imgLoaded||!canvasRef.current||!crop.w)return;
+    const canvas=canvasRef.current;
+    const ctx=canvas.getContext("2d");
+    const img=imgRef.current;
+    const sx=img.naturalWidth/canvas.width;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    ctx.fillStyle="rgba(0,0,0,0.55)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,crop.x*sx,crop.y*sx,crop.w*sx,crop.h*sx,crop.x,crop.y,crop.w,crop.h);
+    ctx.strokeStyle="#e8825a";ctx.lineWidth=2;ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
+    [[crop.x,crop.y],[crop.x+crop.w/2,crop.y],[crop.x+crop.w,crop.y],[crop.x,crop.y+crop.h/2],[crop.x+crop.w,crop.y+crop.h/2],[crop.x,crop.y+crop.h],[crop.x+crop.w/2,crop.y+crop.h],[crop.x+crop.w,crop.y+crop.h]].forEach(([hx,hy])=>{
+      ctx.fillStyle="#e8825a";ctx.beginPath();ctx.arc(hx,hy,6,0,Math.PI*2);ctx.fill();
+    });
+  },[crop,imgLoaded]);
+
+  const getPos=(e)=>{const r=canvasRef.current.getBoundingClientRect();const t=e.touches?.[0]||e;return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  const onStart=(e)=>{e.preventDefault();const {x,y}=getPos(e);const {x:cx,y:cy,w:cw,h:ch}=crop;const edge=14;let handle=null;if(Math.abs(x-cx)<edge&&Math.abs(y-cy)<edge)handle="tl";else if(Math.abs(x-(cx+cw))<edge&&Math.abs(y-cy)<edge)handle="tr";else if(Math.abs(x-cx)<edge&&Math.abs(y-(cy+ch))<edge)handle="bl";else if(Math.abs(x-(cx+cw))<edge&&Math.abs(y-(cy+ch))<edge)handle="br";else if(x>cx&&x<cx+cw&&y>cy&&y<cy+ch)handle="move";if(handle)setDrag({handle,sx:x,sy:y,crop:{...crop}});};
+  const onMove=(e)=>{if(!drag)return;e.preventDefault();const {x,y}=getPos(e);const dx=x-drag.sx,dy=y-drag.sy;const {x:ox,y:oy,w:ow,h:oh}=drag.crop;const canvas=canvasRef.current;const ar=ASPECTS[aspect];let nc={...crop};
+    if(drag.handle==="move"){nc={...nc,x:Math.max(0,Math.min(canvas.width-ow,ox+dx)),y:Math.max(0,Math.min(canvas.height-oh,oy+dy))};}
+    else{let nw=ow,nh=oh,nx=ox,ny=oy;
+      if(drag.handle==="br"){nw=Math.max(40,ow+dx);nh=nw/ar;}
+      else if(drag.handle==="tr"){nw=Math.max(40,ow+dx);nh=nw/ar;ny=oy+oh-nh;}
+      else if(drag.handle==="bl"){nw=Math.max(40,ow-dx);nx=ox+ow-nw;nh=nw/ar;}
+      else if(drag.handle==="tl"){nw=Math.max(40,ow-dx);nx=ox+ow-nw;nh=nw/ar;ny=oy+oh-nh;}
+      nc={x:Math.max(0,nx),y:Math.max(0,ny),w:Math.min(nw,canvas.width-nx),h:Math.min(nh,canvas.height-ny)};
+    }setCrop(nc);};
+  const onEnd=()=>setDrag(null);
+
+  const doCrop=()=>{
+    const canvas=document.createElement("canvas");
+    const img=imgRef.current;const disp=canvasRef.current;
+    const sx=img.naturalWidth/disp.width;
+    canvas.width=Math.round(crop.w*sx);canvas.height=Math.round(crop.h*sx);
+    canvas.getContext("2d").drawImage(img,crop.x*sx,crop.y*sx,crop.w*sx,crop.h*sx,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{const f=new File([blob],"crop.jpg",{type:"image/jpeg"});onCrop(f);},"image/jpeg",0.88);
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000e",zIndex:3000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{width:"100%",maxWidth:500,background:G.card,borderRadius:20,overflow:"hidden",border:"2px solid "+G.accent+"44"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid "+G.border}}>
+          <div style={{fontWeight:700,color:G.text,fontSize:15}}>✂️ 写真をトリミング</div>
+          <button onClick={onCancel} style={{background:"none",border:"none",color:G.sub,fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{display:"flex",gap:6,padding:"10px 16px",justifyContent:"center"}}>
+          {Object.keys(ASPECTS).map(a=>(
+            <button key={a} onClick={()=>setAspect(a)} style={{padding:"6px 14px",borderRadius:20,border:"1.5px solid "+(aspect===a?G.accent:G.border),background:aspect===a?G.accent+"22":"transparent",color:aspect===a?G.accent:G.sub,fontSize:12,fontWeight:700,cursor:"pointer"}}>{a}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",justifyContent:"center",background:"#000",overflow:"hidden"}}>
+          <canvas ref={canvasRef} style={{maxWidth:"100%",touchAction:"none",cursor:drag?"grabbing":"crosshair"}}
+            onMouseDown={onStart} onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
+            onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd}/>
+        </div>
+        <div style={{display:"flex",gap:10,padding:"14px 16px"}}>
+          <button onClick={onCancel} style={{flex:1,padding:"12px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>キャンセル</button>
+          <button onClick={doCrop} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>✅ 確定</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const [tab,setTab]=useState("recipe");
   const [editing,setEditing]=useState(false);
@@ -618,16 +690,18 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
   const [confirmDelRecipe,setConfirmDelRecipe]=useState(false);
   const [showShare,setShowShare]=useState(false);
   const [showShopping,setShowShopping]=useState(false);
+  const [cropSrc,setCropSrc]=useState(null);
   const [servings,setServings]=useState(()=>{const n=parseInt(recipe.servings);return isNaN(n)?2:n;});
   const base=parseInt(recipe.servings)||2;
   const scale=servings/base;
   const c1=tagColor(recipe.title||"a");
   const photoRef=useRef(),heroRef=useRef(),stepRefs=useRef([]);
 
-  const startEdit=()=>{setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""]});setEditing(true);};
-  const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),updatedAt:new Date().toISOString()});setEditing(false);};
+  const startEdit=()=>{setEditData({title:recipe.title||"",description:recipe.description||"",emoji:recipe.emoji||"🍳",time:recipe.time||"",servings:String(parseInt(recipe.servings)||2),source:recipe.source||"",sourceUrl:recipe.sourceUrl||"",tags:[...(recipe.tags||[])],ingredients:(recipe.ingredients||[]).length>0?[...recipe.ingredients]:[{name:"",amount:""}],steps:(recipe.steps||[]).length>0?[...recipe.steps]:[""],tips:recipe.tips||"",nutrition:recipe.nutrition||null});setEditing(true);};
+  const saveEdit=()=>{if(!editData.title.trim())return;onUpdate({...recipe,title:editData.title.trim(),description:editData.description.trim(),emoji:editData.emoji,time:editData.time.trim()||null,servings:editData.servings?editData.servings+"人分":null,source:editData.source.trim()||null,sourceUrl:editData.sourceUrl.trim()||null,tags:editData.tags,ingredients:editData.ingredients.filter(i=>i.name.trim()),steps:editData.steps.filter(s=>s.trim()),tips:editData.tips.trim()||null,nutrition:editData.nutrition,updatedAt:new Date().toISOString()});setEditing(false);};
   const incrementMade=()=>onUpdate({...recipe,madeCount:(recipe.madeCount||0)+1,lastMade:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString()});
-  const handleHeroPhoto=async(f)=>{if(!f)return;try{const url=await compressAndUpload(f,"hero/"+recipe.id);onUpdate({...recipe,photo:url,updatedAt:new Date().toISOString()});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
+  const handleHeroPhoto=(f)=>{if(!f)return;const url=URL.createObjectURL(f);setCropSrc(url);};
+  const handleCroppedHero=async(croppedFile)=>{setCropSrc(null);try{const url=await compressAndUpload(croppedFile,"hero/"+recipe.id);onUpdate({...recipe,photo:url,updatedAt:new Date().toISOString()});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
   const handleStepPhoto=async(f,i)=>{if(!f)return;try{const url=await compressAndUpload(f,"steps/"+recipe.id+"_"+i);const sp={...(recipe.stepPhotos||{})};sp[i]=url;onUpdate({...recipe,stepPhotos:sp,updatedAt:new Date().toISOString()});}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}};
   const handleCommentPhoto=async(f)=>{if(!f)return;setPhotoLoading(true);try{const url=await compressAndUpload(f,"comments/"+userName+"_"+Date.now());setCommentPhoto(url);}catch(e){alert("写真のアップロードに失敗しました: "+e.message);}finally{setPhotoLoading(false);}};
   const submitComment=()=>{if(!commentText.trim()&&!commentPhoto)return;onUpdate({...recipe,comments:[...(recipe.comments||[]),{id:Date.now(),author:userName,text:commentText.trim(),photo:commentPhoto,createdAt:new Date().toLocaleDateString("ja-JP")}],updatedAt:new Date().toISOString()});setCommentText("");setCommentPhoto(null);};
@@ -640,6 +714,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
       {confirmDelRecipe&&<ConfirmDialog msg={"「"+recipe.title+"」を削除しますか？"} onOk={async()=>{await deleteStoragePhotos(extractStoragePaths(recipe));onDelete(recipe.id);onClose();}} onCancel={()=>setConfirmDelRecipe(false)}/>}
       {showShare&&<ShareModal recipe={recipe} onClose={()=>setShowShare(false)}/>}
       {showShopping&&<ShoppingList recipe={recipe} onClose={()=>setShowShopping(false)}/>}
+      {cropSrc&&<ImageCropper src={cropSrc} onCrop={handleCroppedHero} onCancel={()=>setCropSrc(null)}/>}
 
       <div onClick={e=>e.stopPropagation()} style={{background:G.dark,borderRadius:24,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 30px 80px #000c",border:"2px solid "+c1+"55"}}>
         <div style={{height:150,background:recipe.photo?"url("+recipe.photo+") center/cover":"linear-gradient(135deg,"+c1+"66,#1e1a2e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:82,borderRadius:"22px 22px 0 0",position:"relative"}}>
@@ -716,9 +791,25 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                 ))}
                 <button onClick={()=>setEditData(d=>({...d,steps:[...d.steps,""]}))} style={{width:"100%",padding:9,borderRadius:10,border:"1.5px dashed "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer"}}>＋ 手順を追加</button>
               </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setEditing(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>キャンセル</button>
-                <button onClick={saveEdit} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>💾 保存する</button>
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:12,color:G.sub,marginBottom:8}}>💡 コツ・注意点</div>
+                <textarea value={editData.tips} onChange={e=>setEditData(d=>({...d,tips:e.target.value}))} rows={3} placeholder="コツや注意点があれば..." style={{...inS,width:"100%",resize:"vertical"}}/>
+              </div>
+              <div style={{marginBottom:100}}>
+                <div style={{fontSize:12,color:G.sub,marginBottom:8}}>📊 栄養素（1人分・手動編集）</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+                  {[["calories","カロリー","kcal"],["protein","たんぱく質","g"],["fat","脂質","g"],["carbs","炭水化物","g"],["fiber","食物繊維","g"]].map(([k,label,unit])=>(
+                    <div key={k} style={{textAlign:"center"}}>
+                      <div style={{fontSize:9,color:G.sub,marginBottom:4}}>{label}</div>
+                      <input type="number" min="0" value={editData.nutrition?.[k]||""} onChange={e=>{const v=e.target.value;setEditData(d=>({...d,nutrition:{...(d.nutrition||{calories:0,protein:0,fat:0,carbs:0,fiber:0}),[k]:v===''?0:Number(v)}}));}} placeholder="0" style={{...inS,textAlign:"center",padding:"6px 4px",fontSize:12,width:"100%"}}/>
+                      <div style={{fontSize:9,color:G.sub,marginTop:2}}>{unit}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #0a0a12 80%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
+                <button onClick={()=>setEditing(false)} style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>キャンセル</button>
+                <button onClick={saveEdit} style={{flex:2,padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>💾 保存する</button>
               </div>
             </div>
           ):(
@@ -747,16 +838,14 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                 </div>
                 {recipe.addedBy&&<span>👤 {recipe.addedBy}</span>}
                 {recipe.addedAt&&<span>📅 {recipe.addedAt}</span>}
+                {(recipe.source||recipe.sourceUrl)&&<span style={{width:"100%",borderTop:"1px solid "+G.border+"44",paddingTop:8,marginTop:2,display:"flex",flexDirection:"column",gap:3}}>
+                  {recipe.source&&<span>📌 {recipe.source}</span>}
+                  {recipe.sourceUrl&&<a href={recipe.sourceUrl} target="_blank" rel="noreferrer" style={{color:G.blue,wordBreak:"break-all",textDecoration:"none"}}>{recipe.sourceUrl}</a>}
+                </span>}
               </div>
-              {(recipe.source||recipe.sourceUrl)&&(
-                <div style={{background:G.card,borderRadius:12,padding:"10px 14px",marginBottom:14,border:"1.5px solid "+G.accent+"33"}}>
-                  {recipe.source&&<div style={{fontSize:12,color:G.sub,marginBottom:4}}>📌 {recipe.source}</div>}
-                  {recipe.sourceUrl&&<a href={recipe.sourceUrl} target="_blank" rel="noreferrer" style={{color:G.blue,fontSize:12,wordBreak:"break-all",textDecoration:"none"}}>{recipe.sourceUrl}</a>}
-                </div>
-              )}
               <NutritionPanel recipe={recipe} onUpdate={onUpdate}/>
               <div style={{display:"flex",background:G.card,borderRadius:14,padding:4,marginBottom:18,gap:4}}>
-                {[{id:"recipe",label:"📋 レシピ"},{id:"comments",label:"💬 記録"+((recipe.comments||[]).length>0?" ("+(recipe.comments.length)+")":"")}].map(t=>(
+                {[{id:"recipe",label:"📋 レシピ"},{id:"comments",label:"💬 コメント"+((recipe.comments||[]).length>0?" ("+(recipe.comments.length)+")":"")}].map(t=>(
                   <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"9px",borderRadius:11,border:"none",background:tab===t.id?"linear-gradient(135deg,#e8825a,#c8603a)":"transparent",color:tab===t.id?"#fff":G.sub,fontWeight:tab===t.id?700:400,cursor:"pointer",fontSize:12}}>{t.label}</button>
                 ))}
               </div>
@@ -792,6 +881,12 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                       ))}
                     </div>
                   )}
+                  {recipe.tips&&(
+                    <div style={{background:G.card,borderRadius:14,padding:"12px 14px",marginTop:4,border:"1.5px solid #e8c05a44"}}>
+                      <div style={{fontWeight:700,color:G.yellow,fontSize:13,marginBottom:6}}>💡 コツ・注意点</div>
+                      <div style={{fontSize:13,color:"#c0b8d0",lineHeight:1.75}}>{recipe.tips}</div>
+                    </div>
+                  )}
                 </div>
               )}
               {tab==="comments"&&(
@@ -799,7 +894,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                   {(recipe.comments||[]).length===0?(
                     <div style={{textAlign:"center",padding:"28px 0"}}>
                       <div style={{fontSize:40,marginBottom:10}}>📷</div>
-                      <div style={{fontSize:13,color:G.sub}}>まだ記録がありません</div>
+                      <div style={{fontSize:13,color:G.sub}}>まだコメントがありません</div>
                     </div>
                   ):(
                     <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
@@ -820,7 +915,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
                     </div>
                   )}
                   <div style={{background:G.card,borderRadius:16,padding:14,border:"1.5px solid "+G.border}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G.accent,marginBottom:10}}>▸ 記録を追加</div>
+                    <div style={{fontSize:12,fontWeight:700,color:G.accent,marginBottom:10}}>▸ コメントを追加</div>
                     <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="感想・アレンジ・メモなど..." rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,resize:"none",boxSizing:"border-box",lineHeight:1.6,marginBottom:10,display:"block",WebkitAppearance:"none"}}/>
                     {photoLoading&&<div style={{color:G.accent,fontSize:12,marginBottom:8,textAlign:"center"}}>アップロード中...</div>}
                     {commentPhoto&&!photoLoading&&(
@@ -915,13 +1010,113 @@ function AddScreen({onBack,onAdd,userName}){
   const [loading,setLoading]=useState(false);
   const [loadingMsg,setLoadingMsg]=useState("");
   const [toast,setToast]=useState("");
+  const [preview,setPreview]=useState(null);
+  const [editPreview,setEditPreview]=useState(null);
+  const [showTagEditor,setShowTagEditor]=useState(false);
   const fileRef=useRef();
+  const inS={padding:"10px 12px",borderRadius:10,border:"1.5px solid "+G.border,background:G.input,color:G.text,fontSize:13,WebkitAppearance:"none",appearance:"none"};
+
   if(mode==="manual")return <ManualForm onAdd={r=>onAdd({...r,addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP")})} onBack={()=>setMode("image")}/>;
-  const process=async({imageFile,text})=>{
-    setLoading(true);setLoadingMsg(imageFile?"🤖 解析中...":"🔍 取得中...");
-    try{const data=await extractRecipe({imageFile,text});onAdd({...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)});}
-    catch(e){setLoading(false);setToast("❌ "+e.message);}
+
+  const processExtract=async({imageFile,text})=>{
+    setLoading(true);setLoadingMsg(imageFile?"🤖 AI解析中...":"🔍 ページ取得中...");
+    try{
+      const data=await extractRecipe({imageFile,text});
+      const base={...data,id:Date.now(),addedBy:userName,addedAt:new Date().toLocaleDateString("ja-JP"),updatedAt:new Date().toISOString(),comments:[],sourceUrl:data.sourceUrl||(typeof text==="string"&&text.startsWith("http")?text:null)};
+      if(!base.nutrition&&base.ingredients?.length){
+        setLoadingMsg("📊 栄養素を推定中...");
+        try{const n=await estimateNutrition(base);base.nutrition=n;}catch{}
+      }
+      setPreview(base);
+      setEditPreview({title:base.title||"",description:base.description||"",emoji:base.emoji||"🍳",time:base.time||"",servings:String(parseInt(base.servings)||2),source:base.source||"",sourceUrl:base.sourceUrl||"",tags:[...(base.tags||[])],ingredients:(base.ingredients||[]).length>0?[...base.ingredients]:[{name:"",amount:""}],steps:(base.steps||[]).length>0?[...base.steps]:[""],tips:base.tips||"",nutrition:base.nutrition||null});
+    }catch(e){setToast("❌ "+e.message);}
+    finally{setLoading(false);}
   };
+
+  const confirmAdd=()=>{
+    if(!editPreview.title.trim()){setToast("⚠️ 料理名を入力してください");return;}
+    onAdd({...preview,title:editPreview.title.trim(),description:editPreview.description.trim(),emoji:editPreview.emoji,time:editPreview.time.trim()||null,servings:editPreview.servings?editPreview.servings+"人分":null,source:editPreview.source.trim()||null,sourceUrl:editPreview.sourceUrl.trim()||null,tags:editPreview.tags,ingredients:editPreview.ingredients.filter(i=>i.name.trim()),steps:editPreview.steps.filter(s=>s.trim()),tips:editPreview.tips.trim()||null,nutrition:editPreview.nutrition});
+  };
+
+  if(preview&&editPreview)return(
+    <div style={{minHeight:"100vh",background:G.dark,padding:24,paddingBottom:100}}>
+      <style>{CSS}</style>
+      {showTagEditor&&<TagEditor tags={editPreview.tags} onSave={t=>{setEditPreview(d=>({...d,tags:t}));setShowTagEditor(false);}} onClose={()=>setShowTagEditor(false)}/>}
+      <div style={{maxWidth:500,margin:"0 auto"}}>
+        <div style={{background:"linear-gradient(135deg,#5ac87a22,#3aa85a11)",border:"1.5px solid "+G.green+"44",borderRadius:14,padding:"12px 16px",marginBottom:18,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontSize:22}}>✅</div>
+          <div>
+            <div style={{fontWeight:700,color:G.green,fontSize:13}}>AIがレシピを抽出しました</div>
+            <div style={{fontSize:11,color:G.sub,marginTop:2}}>内容を確認・編集して登録してください</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,marginBottom:10}}>
+          <input value={editPreview.emoji} onChange={e=>setEditPreview(d=>({...d,emoji:e.target.value}))} style={{...inS,width:56,textAlign:"center",fontSize:22,padding:"8px"}}/>
+          <input value={editPreview.title} onChange={e=>setEditPreview(d=>({...d,title:e.target.value}))} placeholder="料理名" style={{...inS,flex:1}}/>
+        </div>
+        <input value={editPreview.description} onChange={e=>setEditPreview(d=>({...d,description:e.target.value}))} placeholder="一言説明" style={{...inS,width:"100%",marginBottom:10,display:"block"}}/>
+        <div style={{display:"flex",gap:10,marginBottom:10}}>
+          <input value={editPreview.time} onChange={e=>setEditPreview(d=>({...d,time:e.target.value}))} placeholder="調理時間" style={{...inS,flex:1}}/>
+          <input value={editPreview.servings} onChange={e=>setEditPreview(d=>({...d,servings:e.target.value}))} placeholder="人数" type="number" min="1" style={{...inS,flex:1}}/>
+        </div>
+        <input value={editPreview.source} onChange={e=>setEditPreview(d=>({...d,source:e.target.value}))} placeholder="出典・SNS" style={{...inS,width:"100%",marginBottom:10,display:"block"}}/>
+        <input value={editPreview.sourceUrl} onChange={e=>setEditPreview(d=>({...d,sourceUrl:e.target.value}))} placeholder="参照URL" style={{...inS,width:"100%",marginBottom:14,display:"block"}}/>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>🏷 タグ</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+            {editPreview.tags.map((t,i)=><Tag key={i} label={t} active onRemove={()=>setEditPreview(d=>({...d,tags:d.tags.filter((_,idx)=>idx!==i)}))}/>)}
+            <button onClick={()=>setShowTagEditor(true)} style={{background:G.accent+"22",border:"1.5px dashed "+G.accent+"88",borderRadius:20,padding:"3px 10px",color:G.accent,fontSize:11,fontWeight:700,cursor:"pointer"}}>＋ タグ編集</button>
+          </div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>🥘 材料</div>
+          {editPreview.ingredients.map((ing,i)=>(
+            <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+              <input value={ing.name} onChange={e=>{const a=[...editPreview.ingredients];a[i]={...a[i],name:e.target.value};setEditPreview(d=>({...d,ingredients:a}));}} placeholder="材料名" style={{...inS,flex:2}}/>
+              <input value={ing.amount} onChange={e=>{const a=[...editPreview.ingredients];a[i]={...a[i],amount:e.target.value};setEditPreview(d=>({...d,ingredients:a}));}} placeholder="分量" style={{...inS,flex:1}}/>
+              <button onClick={()=>setEditPreview(d=>({...d,ingredients:d.ingredients.filter((_,idx)=>idx!==i)}))} style={{background:G.input,border:"1.5px solid "+G.border,borderRadius:8,width:34,height:36,color:G.sub,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
+            </div>
+          ))}
+          <button onClick={()=>setEditPreview(d=>({...d,ingredients:[...d.ingredients,{name:"",amount:""}]}))} style={{width:"100%",padding:9,borderRadius:10,border:"1.5px dashed "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer"}}>＋ 材料を追加</button>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>👨‍🍳 作り方</div>
+          {editPreview.steps.map((step,i)=>(
+            <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-start"}}>
+              <div style={{background:"linear-gradient(135deg,#5ac87a,#3aa85a)",color:"#fff",borderRadius:"50%",minWidth:26,height:26,marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{i+1}</div>
+              <textarea value={step} onChange={e=>{const a=[...editPreview.steps];a[i]=e.target.value;setEditPreview(d=>({...d,steps:a}));}} rows={2} placeholder={"手順 "+(i+1)} style={{...inS,flex:1,resize:"vertical"}}/>
+              <button onClick={()=>setEditPreview(d=>({...d,steps:d.steps.filter((_,idx)=>idx!==i)}))} style={{background:G.input,border:"1.5px solid "+G.border,borderRadius:8,width:34,height:34,marginTop:4,color:G.sub,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
+            </div>
+          ))}
+          <button onClick={()=>setEditPreview(d=>({...d,steps:[...d.steps,""]}))} style={{width:"100%",padding:9,borderRadius:10,border:"1.5px dashed "+G.border,background:G.input,color:G.sub,fontSize:13,cursor:"pointer"}}>＋ 手順を追加</button>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,color:G.sub,marginBottom:8}}>💡 コツ・注意点</div>
+          <textarea value={editPreview.tips} onChange={e=>setEditPreview(d=>({...d,tips:e.target.value}))} rows={2} placeholder="コツや注意点があれば..." style={{...inS,width:"100%",resize:"vertical"}}/>
+        </div>
+        {editPreview.nutrition&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,color:G.sub,marginBottom:8}}>📊 栄養素（1人分・推定）</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+              {[["calories","カロリー","kcal"],["protein","たんぱく質","g"],["fat","脂質","g"],["carbs","炭水化物","g"],["fiber","食物繊維","g"]].map(([k,label,unit])=>(
+                <div key={k} style={{textAlign:"center"}}>
+                  <div style={{fontSize:9,color:G.sub,marginBottom:4}}>{label}</div>
+                  <input type="number" min="0" value={editPreview.nutrition?.[k]||""} onChange={e=>{const v=e.target.value;setEditPreview(d=>({...d,nutrition:{...(d.nutrition||{}),[k]:v===''?0:Number(v)}}));}} style={{...inS,textAlign:"center",padding:"6px 4px",fontSize:12,width:"100%"}}/>
+                  <div style={{fontSize:9,color:G.sub,marginTop:2}}>{unit}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(to top, #0a0a12 80%, transparent)",padding:"16px 20px 32px",display:"flex",gap:10}}>
+        <button onClick={()=>setPreview(null)} style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid "+G.border,background:G.input,color:G.sub,fontWeight:700,cursor:"pointer",fontSize:14}}>← 戻る</button>
+        <button onClick={confirmAdd} style={{flex:2,padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#e8825a,#c8603a)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>🍳 登録する</button>
+      </div>
+      <Toast msg={toast} onClear={()=>setToast("")}/>
+    </div>
+  );
+
   return(
     <div style={{minHeight:"100vh",background:G.dark,padding:24}}>
       <style>{CSS}</style>
@@ -935,7 +1130,7 @@ function AddScreen({onBack,onAdd,userName}){
         </div>
         {mode==="image"&&(
           <div>
-            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)process({imageFile:f});e.target.value="";}}/>
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)processExtract({imageFile:f});e.target.value="";}}/>
             <div onClick={()=>!loading&&fileRef.current?.click()} style={{border:"2px solid "+G.accent,borderRadius:20,padding:"44px 24px",textAlign:"center",cursor:loading?"default":"pointer",background:"linear-gradient(135deg,#1a1630,#141828)"}}>
               {loading?<Loader msg={loadingMsg}/>:(
                 <div>
@@ -951,7 +1146,7 @@ function AddScreen({onBack,onAdd,userName}){
         {mode==="text"&&(
           <div>
             <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"URLやSNS投稿テキストを貼り付け\n\n例: https://cookpad.com/recipe/..."} rows={7} style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid "+G.border,background:G.card,color:G.text,fontSize:14,resize:"vertical",boxSizing:"border-box",lineHeight:1.6,display:"block",WebkitAppearance:"none"}}/>
-            <button onClick={()=>process({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:G.text,fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
+            <button onClick={()=>processExtract({text:textInput})} disabled={loading||!textInput.trim()} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:14,border:"none",background:loading||!textInput.trim()?G.input:"linear-gradient(135deg,#e8825a,#c8603a)",color:G.text,fontSize:15,fontWeight:700,cursor:loading||!textInput.trim()?"default":"pointer"}}>{loading?<Loader msg={loadingMsg}/>:"🤖 AIでレシピを抽出"}</button>
           </div>
         )}
       </div>
@@ -985,6 +1180,7 @@ export default function App(){
   const [syncStatus,setSyncStatus]=useState("");
   const [lastSync,setLastSync]=useState(null);
   const [members,setMembers]=useState([]);
+  const [isInitializing,setIsInitializing]=useState(true);
 
   const checkPassword=()=>{
     if(pwInput===APP_PASSWORD){localStorage.setItem(AUTH_KEY,"ok");setAuthed(true);setPwError(false);}
@@ -1032,7 +1228,7 @@ export default function App(){
     }catch(e){
       try{const s=localStorage.getItem(STORAGE_KEY);if(s)setRecipes(JSON.parse(s));}catch{}
       setSyncStatus("error");
-    }
+    }finally{setIsInitializing(false);}
   };
 
   const syncData=async(manual=true)=>{
@@ -1209,7 +1405,11 @@ export default function App(){
       </div>
 
       <div style={{maxWidth:740,margin:"0 auto",padding:"18px 16px 60px"}}>
-        {sorted.length===0?(
+        {isInitializing?(
+          <div style={{textAlign:"center",padding:"72px 0"}}>
+            <Loader msg="🔄 レシピを読み込み中..."/>
+          </div>
+        ):sorted.length===0?(
           <div style={{textAlign:"center",padding:"72px 0"}}>
             <div style={{fontSize:56,marginBottom:16}}>📭</div>
             <div style={{fontWeight:700,marginBottom:8,color:G.sub}}>{search||activeTag||filterFav?"該当するレシピがありません":"まだレシピがありません"}</div>

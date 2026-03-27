@@ -7,7 +7,7 @@ const RECIPE_SYSTEM = `あなたはレシピ抽出AIです。
 コードブロック・前置きテキスト・説明文は一切不要です。JSONのみ出力してください。
 
 フォーマット:
-{"title":"料理名","description":"一言説明20字以内","tags":["タグ1","タグ2"],"servings":"〇人分","time":"〇分","ingredients":[{"name":"材料名","amount":"分量"}],"steps":["手順1","手順2"],"source":"取得元サービス名","sourceUrl":null,"emoji":"絵文字1つ"}
+{"title":"料理名","description":"一言説明20字以内","tags":["タグ1","タグ2"],"servings":"〇人分","time":"〇分","ingredients":[{"name":"材料名","amount":"分量"}],"steps":["手順1","手順2"],"tips":"コツ・注意点（あれば）またはnull","source":"取得元サービス名","sourceUrl":null,"emoji":"絵文字1つ","nutrition":{"calories":数字,"protein":数字,"fat":数字,"carbs":数字,"fiber":数字}}
 
 tagsのルール:
 - 料理のジャンル（和食・洋食・中華など）を1つ入れる
@@ -17,27 +17,55 @@ tagsのルール:
 - tagsは合計3〜8個
 - 情報不明の項目はnullまたは空配列
 - sourceUrlはURLが明示されている場合のみ文字列で入れる
+- tipsはコツや注意点があれば文字列で、なければnull
+- nutritionは材料と手順から1人分の栄養素を必ず推定すること（推定値でよい）
 - 必ずJSON単体のみを返す`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const { prompt, imageBase64, imageMediaType } = req.body;
   try {
+    let finalPrompt = prompt;
+    if (!imageBase64 && prompt) {
+      const urlMatch = prompt.match(/https?:\/\/[^\s]+/);
+      if (urlMatch) {
+        try {
+          const pageRes = await fetch(urlMatch[0], {
+            headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+            redirect: "follow",
+          });
+          if (pageRes.ok) {
+            const html = await pageRes.text();
+            const pageContent = html
+              .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+              .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 4000);
+            if (pageContent.length > 100) {
+              finalPrompt = `以下のページ内容からレシピを抽出してください:\nURL: ${urlMatch[0]}\n\n${pageContent}`;
+            }
+          }
+        } catch (e) {}
+      }
+    }
     const messages = [
       { role: "system", content: RECIPE_SYSTEM },
-      { role: "user", content: imageBase64
-        ? [
-            // 【修正】 detail: "low" を削除し、AIが文字をしっかり読める解像度（auto/high）に変更
-            { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } },
-            { type: "text", text: prompt }
-          ]
-        : prompt
-      }
+      {
+        role: "user",
+        content: imageBase64
+          ? [
+              { type: "image_url", image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } },
+              { type: "text", text: finalPrompt },
+            ]
+          : finalPrompt,
+      },
     ];
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + process.env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 1500, messages }),
+      body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 1800, messages }),
     });
     if (!response.ok) {
       const err = await response.json();
@@ -49,4 +77,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message });
   }
 }
-
