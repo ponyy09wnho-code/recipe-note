@@ -738,7 +738,7 @@ function RecipeDetail({recipe,onClose,onUpdate,userName,onDelete,onCopy}){
           <div style={{position:"absolute",bottom:10,right:12}}>
             <button onClick={e=>{e.stopPropagation();setShowActionMenu(m=>!m);}} style={{background:"rgba(10,5,30,0.55)",border:"1px solid #ffffff44",borderRadius:10,padding:"5px 12px",color:"#fff",fontSize:16,cursor:"pointer",fontWeight:700,letterSpacing:1}}>•••</button>
             {showActionMenu&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:40,right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:20,overflow:"hidden",minWidth:150}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:20,overflow:"hidden",minWidth:150}}>
                 {[
                   {icon:"✏️",label:"編集",action:()=>{startEdit();}},
                   {icon:"📷",label:"写真を変更",action:()=>{heroRef.current?.click();}},
@@ -1401,9 +1401,9 @@ export default function App(){
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <div style={{position:"relative"}}>
-                <button onClick={()=>setShowHomeMenu(m=>!m)} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 12px",color:G.sub,cursor:"pointer",fontSize:15,fontWeight:700}}>☰</button>
+                <button onClick={e=>{e.stopPropagation();setShowHomeMenu(m=>!m);}} style={{background:G.card,border:"1.5px solid "+G.border,borderRadius:10,padding:"8px 12px",color:G.sub,cursor:"pointer",fontSize:15,fontWeight:700}}>☰</button>
                 {showHomeMenu&&(
-                  <div style={{position:"absolute",top:44,right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:200,overflow:"hidden",minWidth:150}}>
+                  <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,background:G.card,borderRadius:14,border:"1.5px solid "+G.border,boxShadow:"0 8px 32px rgba(100,60,200,0.18)",zIndex:200,overflow:"hidden",minWidth:150}}>
                     <button onClick={()=>{setShowHistory(true);setShowHomeMenu(false);}} style={{display:"block",width:"100%",padding:"11px 16px",border:"none",borderBottom:"1px solid "+G.border+"55",background:"transparent",color:G.text,fontSize:13,cursor:"pointer",textAlign:"left"}}>🕐 閲覧履歴</button>
                     <button onClick={()=>{setShowTagManagement(true);setShowHomeMenu(false);}} style={{display:"block",width:"100%",padding:"11px 16px",border:"none",background:"transparent",color:G.text,fontSize:13,cursor:"pointer",textAlign:"left"}}>🏷 タグ管理</button>
                   </div>
